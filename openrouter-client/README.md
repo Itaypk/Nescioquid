@@ -66,7 +66,7 @@ and the client wires itself.
 ## Coordinates
 
 ```kotlin
-implementation("com.github.Itaypk.Nescioquid:openrouter-client:0.1.0")
+implementation("com.github.Itaypk.Nescioquid:openrouter-client:0.1.1")
 ```
 
 Requires JVM 25+ and a Spring Boot 4.x runtime. Apache-2.0.

@@ -58,7 +58,7 @@ key exists throws `IllegalStateException`.
 ## Coordinates
 
 ```kotlin
-implementation("com.github.Itaypk.Nescioquid:envelope-crypto:0.1.0")
+implementation("com.github.Itaypk.Nescioquid:envelope-crypto:0.1.1")
 ```
 
 Requires JVM 25+. Apache-2.0.
