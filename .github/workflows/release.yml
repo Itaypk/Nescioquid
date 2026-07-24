@@ -66,19 +66,33 @@ jobs:
         env:
           VERSION: ${{ steps.check.outputs.version }}
         run: |
-          # Requesting a module's .pom makes JitPack build the tag and blocks until it finishes,
-          # returning 200 on success and an error status on build failure — so this both triggers
-          # and verifies the publish. The first request per module can take several minutes.
+          # JitPack builds asynchronously: requesting a module's .pom triggers the build but returns
+          # 404 until it finishes (200 on success). So poll both modules' poms until each is 200,
+          # short-circuiting to a failure if the shared repo build.log reports one. The whole repo
+          # builds once, so one build.log covers both modules.
           set -u
-          fail=0
-          for module in envelope-crypto openrouter-client; do
-            url="https://jitpack.io/com/github/Itaypk/Nescioquid/${module}/${VERSION}/${module}-${VERSION}.pom"
-            echo "Building ${module} on JitPack: ${url}"
-            code="$(curl -sSL --max-time 1200 -o /dev/null -w '%{http_code}' "$url" || echo 000)"
-            echo "${module}: HTTP ${code}"
-            if [ "$code" != "200" ]; then
-              echo "::error::JitPack build failed for ${module} (HTTP ${code}). Log: https://jitpack.io/com/github/Itaypk/Nescioquid/${module}/${VERSION}/build.log"
-              fail=1
+          buildlog="https://jitpack.io/com/github/Itaypk/Nescioquid/${VERSION}/build.log"
+          deadline=$(( $(date +%s) + 1500 )) # give JitPack up to 25 minutes
+          while :; do
+            all_ok=1
+            for module in envelope-crypto openrouter-client; do
+              pom="https://jitpack.io/com/github/Itaypk/Nescioquid/${module}/${VERSION}/${module}-${VERSION}.pom"
+              code="$(curl -sSL --max-time 60 -o /dev/null -w '%{http_code}' "$pom" || echo 000)"
+              echo "${module}: HTTP ${code}"
+              [ "$code" = "200" ] || all_ok=0
+            done
+            if [ "$all_ok" = "1" ]; then
+              echo "✅ Both modules published on JitPack (${VERSION})."
+              exit 0
             fi
+            # A failed build won't ever 200 — bail out as soon as the log records the failure.
+            if curl -sSL --max-time 60 "$buildlog" 2>/dev/null | grep -qE 'BUILD FAILED|Build failed'; then
+              echo "::error::JitPack build failed for ${VERSION}. Log: ${buildlog}"
+              exit 1
+            fi
+            if [ "$(date +%s)" -ge "$deadline" ]; then
+              echo "::error::Timed out waiting for JitPack to publish ${VERSION}. Log: ${buildlog}"
+              exit 1
+            fi
+            sleep 20
           done
-          exit "$fail"
