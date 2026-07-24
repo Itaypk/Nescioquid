@@ -1,10 +1,10 @@
 # JitPack builds this repo on demand when a consumer requests a tag/commit.
-# Both modules require the JVM 25 toolchain, so JitPack must build on JDK 25.
-# JitPack's stock JDKs may not include 25 yet; install it via sdkman first.
-before_install:
-  - sdk install java 25-open < /dev/null || true
-  - sdk use java 25-open
+#
+# Gradle itself runs on JitPack's JDK 17; the JVM 25 toolchain the modules require is
+# auto-provisioned by the foojay-resolver plugin (see settings.gradle.kts), so JitPack
+# needs no JDK 25 of its own. Tests are skipped here (CI already runs them) — this build
+# only needs to produce and install the artifacts.
 jdk:
-  - openjdk25
+  - openjdk17
 install:
   - ./gradlew publishToMavenLocal -x test

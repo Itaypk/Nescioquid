@@ -1,0 +1,84 @@
+name: Release
+
+# On every push to main: if the version in gradle.properties has no matching git tag yet,
+# build, tag it, and trigger + verify the JitPack build for each module. When the tag already
+# exists (no version bump) the job is a cheap no-op. Cut a release by bumping `version` and merging.
+on:
+  push:
+    branches: [main]
+
+concurrency: release
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # need tags to check whether this version was already released
+
+      - name: Resolve version and check for existing tag
+        id: check
+        run: |
+          version="$(grep '^version=' gradle.properties | cut -d= -f2)"
+          if [ -z "$version" ]; then
+            echo "::error::No version= entry in gradle.properties"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if git rev-parse "refs/tags/$version" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Tag $version already exists — nothing to release."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "Releasing version $version."
+          fi
+
+      - name: Set up JDK 25
+        if: steps.check.outputs.exists == 'false'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+
+      - name: Set up Gradle
+        if: steps.check.outputs.exists == 'false'
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build & test
+        if: steps.check.outputs.exists == 'false'
+        run: ./gradlew build --no-daemon
+
+      - name: Create and push tag
+        if: steps.check.outputs.exists == 'false'
+        env:
+          VERSION: ${{ steps.check.outputs.version }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "$VERSION" -m "Release $VERSION"
+          git push origin "refs/tags/$VERSION"
+
+      - name: Trigger and verify JitPack builds
+        if: steps.check.outputs.exists == 'false'
+        env:
+          VERSION: ${{ steps.check.outputs.version }}
+        run: |
+          # Requesting a module's .pom makes JitPack build the tag and blocks until it finishes,
+          # returning 200 on success and an error status on build failure — so this both triggers
+          # and verifies the publish. The first request per module can take several minutes.
+          set -u
+          fail=0
+          for module in envelope-crypto openrouter-client; do
+            url="https://jitpack.io/com/github/Itaypk/Nescioquid/${module}/${VERSION}/${module}-${VERSION}.pom"
+            echo "Building ${module} on JitPack: ${url}"
+            code="$(curl -sSL --max-time 1200 -o /dev/null -w '%{http_code}' "$url" || echo 000)"
+            echo "${module}: HTTP ${code}"
+            if [ "$code" != "200" ]; then
+              echo "::error::JitPack build failed for ${module} (HTTP ${code}). Log: https://jitpack.io/com/github/Itaypk/Nescioquid/${module}/${VERSION}/build.log"
+              fail=1
+            fi
+          done
+          exit "$fail"

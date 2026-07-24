@@ -4,7 +4,7 @@ plugins {
 
 allprojects {
     group = "dev.itayp.nescioquid"
-    version = "0.1.0"
+    version = rootProject.version // sourced from gradle.properties; the release workflow reads it too
 
     repositories {
         mavenCentral()
