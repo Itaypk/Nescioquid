@@ -12,7 +12,6 @@ class AiClient(
     properties: AiClientProperties,
     private val callGate: AiCallGate,
     private val callListener: AiCallListener,
-    private val reasoningResolver: ReasoningResolver,
 ) {
     private val log = LoggerFactory.getLogger(AiClient::class.java)
 
@@ -22,35 +21,29 @@ class AiClient(
         .build()
 
     /**
-     * Sends a chat request to the AI API. [context] attributes the call for usage accounting and
-     * is the carrier for the pre-call gate. The gate runs first and may throw to refuse the call;
-     * otherwise usage is recorded for both success and failure.
+     * Sends a chat request to the AI API. The [request] is the source of truth for everything on the
+     * wire, including [ChatRequest.reasoning] — the caller sets it (the library applies no central
+     * reasoning policy). [context] attributes the call for usage accounting and is the carrier for
+     * the pre-call gate. The gate runs first and may throw to refuse the call; otherwise usage is
+     * recorded for both success and failure.
      */
     fun chat(request: ChatRequest, context: AiCallContext): ChatResponse {
-        // Apply per-functionality reasoning centrally (keyed on the call's conversation type), unless
-        // the caller already set it explicitly. Guarded by the model's fetched capabilities.
-        val effectiveRequest =
-            if (request.reasoning == null) {
-                request.copy(reasoning = reasoningResolver.resolve(context.conversationType, request.model))
-            } else {
-                request
-            }
-        callGate.beforeCall(context, effectiveRequest)
+        callGate.beforeCall(context, request)
         val response = try {
             withRetry {
-                log.debug("Sending chat request to AI API: model=${effectiveRequest.model}, messages=${effectiveRequest.messages.size}")
+                log.debug("Sending chat request to AI API: model=${request.model}, messages=${request.messages.size}")
                 client.post()
                     .uri("/chat/completions")
                     .contentType(MediaType.APPLICATION_JSON)
-                    .body(effectiveRequest)
+                    .body(request)
                     .retrieve()
                     .body(ChatResponse::class.java)!!
             }
         } catch (e: RuntimeException) {
-            callListener.recordFailure(context, effectiveRequest)
+            callListener.recordFailure(context, request)
             throw e
         }
-        callListener.recordSuccess(context, effectiveRequest, response)
+        callListener.recordSuccess(context, request, response)
         return response
     }
 

@@ -21,8 +21,8 @@ data class ChatRequest(
     @JsonProperty("tool_choice") val toolChoice: String? = null,
     val provider: ProviderPreferences = ProviderPreferences(),
     // Reasoning/effort control (OpenRouter `reasoning` field). Omitted from the wire when null, so
-    // the default is unchanged model behavior. Populated centrally by AiClient from per-functionality
-    // config (see ReasoningResolver), or set explicitly by a caller.
+    // the default is unchanged model behavior. Set by the caller — the client applies no central
+    // reasoning policy.
     @JsonInclude(JsonInclude.Include.NON_NULL)
     val reasoning: ReasoningConfig? = null,
     // Structured outputs (OpenRouter `response_format` field). Omitted from the wire when null, so
