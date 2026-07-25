@@ -9,3 +9,6 @@ build/
 
 # OS
 .DS_Store
+
+# Local secrets for live integration tests (e.g. OPENROUTER_API_KEY)
+.env

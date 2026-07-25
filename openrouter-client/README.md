@@ -99,6 +99,18 @@ Supported property types: `String`/`CharSequence`/`Char`, `Boolean`, integer typ
 (open object — *not* strict-compatible, avoid in strict schemas). Other types and self-referential
 DTOs throw `IllegalArgumentException`.
 
+### Verifying against the real API
+
+`OpenRouterIntegrationTest` sends live structured-output and tool-call requests to OpenRouter to
+confirm a generated schema is accepted exactly as-is. It's gated on an API key and **skipped**
+(not failed) when none is set, so it stays dormant in normal CI:
+
+```bash
+export OPENROUTER_API_KEY=sk-or-...            # or put it in a git-ignored .env at the repo root
+# OPENROUTER_TEST_MODEL overrides the default openai/gpt-4o-mini
+./gradlew :openrouter-client:test --tests '*OpenRouterIntegrationTest'
+```
+
 ## Coordinates
 
 ```kotlin
