@@ -19,6 +19,7 @@ Consumers are expected to be **Spring Boot apps** (the client uses `RestClient` 
 | `tool/*` | `AiTool` / `ToolKind` / `ToolRegistry` — a function-tool abstraction and registry. |
 | `AssistantJson.kt` | `extractJsonObjectSpan` / `parseAssistantJsonResponse` — pull a JSON object out of an LLM response, tolerating surrounding prose or code fences. |
 | `LlmResponseRedaction.kt` | `redactLlmResponse` — render a malformed LLM response safe to log (keeps structure, masks leaf values). |
+| `JsonSchemaGenerator.kt` | `jsonSchema<T>()` — derive a strict-mode-compatible JSON Schema from a Kotlin data class, for structured outputs and tool parameters. |
 
 ## Seams you implement
 
@@ -63,10 +64,45 @@ val text = response.choices.first().message.contentText
 Component-scan `dev.itayp.nescioquid.openrouter` (and provide the three seams + `AiClientProperties`)
 and the client wires itself.
 
+## Structured outputs & DTO-driven schemas
+
+`jsonSchema<T>()` derives a JSON Schema from a Kotlin data class. The schema is **strict-mode
+compatible**: every object sets `additionalProperties: false` and lists all properties in `required`;
+nullable properties keep a `["<type>", "null"]` union so the model may legitimately emit `null`.
+`@JsonProperty` renames a property, `@JsonPropertyDescription` becomes its `description`.
+
+Constrain a reply to a schema with `structuredOutput<T>(name)`:
+
+```kotlin
+data class Recipe(
+    val title: String,
+    @JsonPropertyDescription("Ordered preparation steps") val steps: List<String>,
+)
+
+val response = aiClient.chat(
+    ChatRequest(
+        model = "openai/gpt-4o",
+        messages = listOf(ChatMessage("user", "Give me a recipe")),
+        responseFormat = structuredOutput<Recipe>("recipe"), // strict = true by default
+    ),
+    AiCallContext(userId = userId, conversationType = "recipe"),
+)
+val recipe = parseAssistantJsonResponse(objectMapper, response.choices.first().message.contentText!!, Recipe::class.java)
+```
+
+The same generator produces function-tool parameters — an `AiTool` can return
+`jsonSchema<MyParamsDto>()` from `parameters` instead of hand-building the map.
+
+Supported property types: `String`/`CharSequence`/`Char`, `Boolean`, integer types
+(`Int`/`Long`/`Short`/`Byte`/`BigInteger`), number types (`Float`/`Double`/`BigDecimal`), enums
+(→ `enum` of names), collections/arrays (→ `array`), nested data classes, and `Map<String, V>`
+(open object — *not* strict-compatible, avoid in strict schemas). Other types and self-referential
+DTOs throw `IllegalArgumentException`.
+
 ## Coordinates
 
 ```kotlin
-implementation("com.github.Itaypk.Nescioquid:openrouter-client:0.1.1")
+implementation("com.github.Itaypk.Nescioquid:openrouter-client:0.2.0")
 ```
 
 Requires JVM 25+ and a Spring Boot 4.x runtime. Apache-2.0.
