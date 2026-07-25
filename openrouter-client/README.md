@@ -18,7 +18,7 @@ Consumers are expected to be **Spring Boot apps** (the client uses `RestClient` 
 | `tool/*` | `AiTool` / `ToolKind` / `ToolRegistry` — a function-tool abstraction and registry. |
 | `AssistantJson.kt` | `extractJsonObjectSpan` / `parseAssistantJsonResponse` — pull a JSON object out of an LLM response, tolerating surrounding prose or code fences. |
 | `LlmResponseRedaction.kt` | `redactLlmResponse` — render a malformed LLM response safe to log (keeps structure, masks leaf values). |
-| `JsonSchemaGenerator.kt` | `jsonSchema<T>()` — derive a strict-mode-compatible JSON Schema from a Kotlin data class, for structured outputs and tool parameters. |
+| `JsonSchemaGenerator.kt` | `jsonSchema<T>()` — derive a JSON Schema (strict or non-strict, with a `customize` hook) from a Kotlin data class, for structured outputs and tool parameters. |
 
 ## Seams you implement
 
@@ -68,10 +68,25 @@ and the client wires itself.
 
 ## Structured outputs & DTO-driven schemas
 
-`jsonSchema<T>()` derives a JSON Schema from a Kotlin data class. The schema is **strict-mode
-compatible**: every object sets `additionalProperties: false` and lists all properties in `required`;
-nullable properties keep a `["<type>", "null"]` union so the model may legitimately emit `null`.
-`@JsonProperty` renames a property, `@JsonPropertyDescription` becomes its `description`.
+`jsonSchema<T>()` derives a JSON Schema from a Kotlin data class. By default (`strict = true`) the
+schema is **strict-mode compatible**: every object sets `additionalProperties: false` and lists all
+properties in `required`; nullable properties keep a `["<type>", "null"]` union so the model may
+legitimately emit `null`. Pass `strict = false` for a looser schema (only non-nullable properties
+`required`, no forced `additionalProperties`) — the shape you want for hand-written-style function
+tool parameters. `@JsonProperty` renames a property, `@JsonPropertyDescription` becomes its
+`description`, and an enum's wire values come from a `@JsonValue` member when present (else the
+constant names).
+
+For constraints the generator can't derive from the DTO — an enum whose allowed values are a runtime
+list, or a `String` property that should carry an `enum` — pass a `customize` block to patch specific
+(possibly nested) subschemas:
+
+```kotlin
+val params = jsonSchema<CreateTaskArgs>(strict = false) {
+    property("priority").enum(TaskPriority.allowedValues)
+    property("tags").items().property("color_id").enum(TagColorOptions.ALLOWED)
+}
+```
 
 Constrain a reply to a schema with `structuredOutput<T>(name)`:
 
@@ -97,7 +112,7 @@ The same generator produces function-tool parameters — an `AiTool` can return
 
 Supported property types: `String`/`CharSequence`/`Char`, `Boolean`, integer types
 (`Int`/`Long`/`Short`/`Byte`/`BigInteger`), number types (`Float`/`Double`/`BigDecimal`), enums
-(→ `enum` of names), collections/arrays (→ `array`), nested data classes, and `Map<String, V>`
+(→ `enum`), collections/arrays (→ `array`), nested data classes, and `Map<String, V>`
 (open object — *not* strict-compatible, avoid in strict schemas). Other types and self-referential
 DTOs throw `IllegalArgumentException`.
 
@@ -116,7 +131,7 @@ export OPENROUTER_API_KEY=sk-or-...            # or put it in a git-ignored .env
 ## Coordinates
 
 ```kotlin
-implementation("com.github.Itaypk.Nescioquid:openrouter-client:0.3.0")
+implementation("com.github.Itaypk.Nescioquid:openrouter-client:0.4.0")
 ```
 
 Requires JVM 25+ and a Spring Boot 4.x runtime. Apache-2.0.
