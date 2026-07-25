@@ -20,8 +20,8 @@ import kotlin.test.assertTrue
  * Gated on an OpenRouter API key: set `OPENROUTER_API_KEY` in the environment, or put it in a
  * `.env` file at the repo root or module dir (`.env` is git-ignored). When no key is resolvable the
  * tests are **skipped** (not failed) via `assumeTrue`, so they stay dormant in normal CI and only
- * run where a key is provided. Model defaults to `openai/gpt-4o-mini`; override with
- * `OPENROUTER_TEST_MODEL`.
+ * run where a key is provided. Model defaults to `openai/gpt-5-nano` (which supports both structured
+ * outputs and tool calls); override with `OPENROUTER_TEST_MODEL`.
  *
  * Tagged `integration` so they can be selected/excluded by tag if desired.
  */
@@ -29,7 +29,10 @@ import kotlin.test.assertTrue
 class OpenRouterIntegrationTest {
 
     private val apiKey: String? = resolveConfig("OPENROUTER_API_KEY")
-    private val model: String = resolveConfig("OPENROUTER_TEST_MODEL") ?: "openai/gpt-4o-mini"
+    // Default must support both structured outputs AND tool calls; override with OPENROUTER_TEST_MODEL.
+    // (Free models often support neither — e.g. gpt-oss-20b:free ignores response_format and has no
+    // provider that enforces tool_choice.)
+    private val model: String = resolveConfig("OPENROUTER_TEST_MODEL") ?: "openai/gpt-5-nano"
     private val objectMapper = jacksonObjectMapper()
 
     private fun aiClient(): AiClient {
@@ -76,6 +79,10 @@ class OpenRouterIntegrationTest {
                 ChatMessage(role = "user", content = "What is the capital of France?"),
             ),
             responseFormat = structuredOutput<CapitalFact>("capital_fact"),
+            // Relax the default zero-data-retention requirement so free/no-ZDR models (e.g.
+            // openai/gpt-oss-20b:free) have a usable endpoint — this test validates the schema, not a
+            // data policy. Without this, ZDR-only routing returns 404 "No endpoints found".
+            provider = ProviderPreferences(zdr = false),
         )
 
         val response = aiClient().chat(request, context())
@@ -108,7 +115,10 @@ class OpenRouterIntegrationTest {
             model = model,
             messages = listOf(ChatMessage(role = "user", content = "What's the weather in Tokyo? Use celsius.")),
             tools = listOf(tool),
-            toolChoice = "required",
+            // "auto", not "required": the free model has no provider that enforces forced tool_choice
+            // ("no online provider ... advertises inference-time tool_choice enforcement" -> 503).
+            toolChoice = "auto",
+            provider = ProviderPreferences(zdr = false), // see the structured-output test above
         )
 
         val response = aiClient().chat(request, context())

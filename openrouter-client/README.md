@@ -107,7 +107,7 @@ confirm a generated schema is accepted exactly as-is. It's gated on an API key a
 
 ```bash
 export OPENROUTER_API_KEY=sk-or-...            # or put it in a git-ignored .env at the repo root
-# OPENROUTER_TEST_MODEL overrides the default openai/gpt-4o-mini
+# OPENROUTER_TEST_MODEL overrides the default openai/gpt-5-nano (needs structured-output + tool support)
 ./gradlew :openrouter-client:test --tests '*OpenRouterIntegrationTest'
 ```
 
