@@ -49,12 +49,6 @@ class OpenRouterIntegrationTest {
                 override fun recordSuccess(context: AiCallContext, request: ChatRequest, response: ChatResponse) = Unit
                 override fun recordFailure(context: AiCallContext, request: ChatRequest) = Unit
             },
-            // No configured effort -> ReasoningResolver.resolve() returns null immediately, so the
-            // ModelCapabilityService never makes a /model call. The only network call is /chat/completions.
-            reasoningResolver = ReasoningResolver(
-                effortSource = { null },
-                modelCapabilityService = ModelCapabilityService(properties),
-            ),
         )
     }
 
