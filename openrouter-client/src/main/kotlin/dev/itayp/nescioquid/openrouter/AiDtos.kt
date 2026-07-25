@@ -25,6 +25,32 @@ data class ChatRequest(
     // config (see ReasoningResolver), or set explicitly by a caller.
     @JsonInclude(JsonInclude.Include.NON_NULL)
     val reasoning: ReasoningConfig? = null,
+    // Structured outputs (OpenRouter `response_format` field). Omitted from the wire when null, so
+    // the default is free-form output. Build one from a Kotlin DTO with `structuredOutput<T>(name)`
+    // (see JsonSchemaGenerator).
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    @JsonProperty("response_format")
+    val responseFormat: ResponseFormat? = null,
+)
+
+/**
+ * OpenRouter `response_format` for structured outputs. Constrains the model's reply to the JSON
+ * Schema in [jsonSchema]. Prefer building it from a DTO via `structuredOutput<T>(name)`.
+ */
+data class ResponseFormat(
+    val type: String = "json_schema",
+    @JsonProperty("json_schema") val jsonSchema: JsonSchemaSpec,
+)
+
+/**
+ * The `json_schema` payload: a caller-chosen [name], the [strict] flag (OpenRouter recommends
+ * `true`), and the JSON Schema object itself. [JsonSchemaGenerator] produces strict-compatible
+ * [schema] maps.
+ */
+data class JsonSchemaSpec(
+    val name: String,
+    val strict: Boolean = true,
+    val schema: Map<String, Any>,
 )
 
 /**
