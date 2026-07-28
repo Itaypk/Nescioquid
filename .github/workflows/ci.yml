@@ -24,3 +24,9 @@ jobs:
 
       - name: Build
         run: ./gradlew build --no-daemon
+        # OpenRouterIntegrationTest reads these via System.getenv and skips itself (assumeTrue) when
+        # the key is absent — which is what happens on pull requests from forks, since GitHub does
+        # not expose secrets to those runs. Same-repo branches do get the key and run the live tests.
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          OPENROUTER_TEST_MODEL: ${{ secrets.OPENROUTER_TEST_MODEL }}
