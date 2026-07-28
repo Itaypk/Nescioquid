@@ -1,6 +1,8 @@
 package dev.itayp.nescioquid.openrouter
 
 import com.fasterxml.jackson.annotation.JsonPropertyDescription
+import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
@@ -125,6 +127,64 @@ class OpenRouterIntegrationTest {
         // The arguments must parse into the DTO the schema was generated from.
         val query = objectMapper.readValue(call.function.arguments, WeatherQuery::class.java)
         assertTrue(query.location.contains("Tokyo", ignoreCase = true), "location was '${query.location}'")
+    }
+
+    @Test
+    fun `chatStream delivers deltas that add up to the completed response`() = runBlocking {
+        assumeTrue(apiKey != null, "OPENROUTER_API_KEY not set; skipping live OpenRouter test")
+
+        val request = ChatRequest(
+            model = model,
+            messages = listOf(ChatMessage(role = "user", content = "Count from 1 to 20, separated by commas.")),
+            provider = ProviderPreferences(zdr = false), // see the structured-output test above
+        )
+
+        val events = aiClient().chatStream(request, context()).toList()
+
+        val deltas = events.filterIsInstance<ChatStreamEvent.ContentDelta>()
+        assertTrue(deltas.size > 1, "expected the reply to arrive in more than one chunk, got ${deltas.size}")
+
+        val completed = events.last() as ChatStreamEvent.Completed
+        // The whole point of the aggregation: what was streamed is exactly what the caller ends up
+        // with, matching the shape the blocking `chat` returns.
+        assertEquals(deltas.joinToString("") { it.text }, completed.response.choices.first().message.contentText)
+        assertEquals("stop", completed.response.choices.first().finishReason)
+        // `usage.include` is set by chatStream, so the terminal chunk must carry token counts.
+        val usage = assertNotNull(completed.response.usage, "expected usage on the terminal chunk")
+        assertTrue(usage.completionTokens > 0, "expected completion tokens, got ${usage.completionTokens}")
+    }
+
+    @Test
+    fun `chatStream reassembles a fragmented tool call`() = runBlocking {
+        assumeTrue(apiKey != null, "OPENROUTER_API_KEY not set; skipping live OpenRouter test")
+
+        val tool = ToolDefinition(
+            function = FunctionDefinition(
+                name = "get_weather",
+                description = "Get the current weather for a location",
+                parameters = jsonSchema<WeatherQuery>(),
+            ),
+        )
+        val request = ChatRequest(
+            model = model,
+            messages = listOf(ChatMessage(role = "user", content = "What's the weather in Tokyo? Use celsius.")),
+            tools = listOf(tool),
+            toolChoice = "auto", // see the blocking tool-call test above
+            provider = ProviderPreferences(zdr = false),
+        )
+
+        val events = aiClient().chatStream(request, context()).toList()
+
+        val ready = events.filterIsInstance<ChatStreamEvent.ToolCallReady>()
+        assertTrue(ready.isNotEmpty(), "expected the model to return a tool call")
+        val call = ready.first().toolCall
+        assertEquals("get_weather", call.function.name)
+        // Arguments arrive one fragment at a time; only a correct reassembly parses.
+        val query = objectMapper.readValue(call.function.arguments, WeatherQuery::class.java)
+        assertTrue(query.location.contains("Tokyo", ignoreCase = true), "location was '${query.location}'")
+
+        val completed = events.last() as ChatStreamEvent.Completed
+        assertEquals(listOf(call), completed.response.choices.first().message.toolCalls)
     }
 
     private companion object {

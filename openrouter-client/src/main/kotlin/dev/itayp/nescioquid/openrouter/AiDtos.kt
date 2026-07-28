@@ -31,6 +31,22 @@ data class ChatRequest(
     @JsonInclude(JsonInclude.Include.NON_NULL)
     @JsonProperty("response_format")
     val responseFormat: ResponseFormat? = null,
+    // Server-sent-events streaming (OpenRouter `stream` field). Callers do not set this — it is a
+    // transport concern that `AiClient.chatStream` applies to its own copy of the request. Omitted
+    // from the wire when null, so `AiClient.chat` serializes exactly as it did before streaming
+    // existed.
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    val stream: Boolean? = null,
+    // Usage accounting (OpenRouter `usage` field). Also set by `chatStream` rather than the caller:
+    // `include = true` is what makes OpenRouter emit the terminal usage chunk, without which a
+    // streamed call could not report token counts to the AiCallListener.
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    val usage: UsageConfig? = null,
+)
+
+/** OpenRouter `usage` request field. `include = true` asks for token accounting in the response. */
+data class UsageConfig(
+    val include: Boolean = true,
 )
 
 /**

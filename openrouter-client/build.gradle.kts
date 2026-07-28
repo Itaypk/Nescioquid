@@ -20,6 +20,10 @@ dependencies {
     api("tools.jackson.module:jackson-module-kotlin")
     implementation(kotlin("reflect"))
 
+    // Coroutines: `AiClient.chatStream` returns a Flow, so this is on the public surface. Chosen
+    // over Reactor deliberately — it keeps spring-webflux/reactor-core off consumers' classpaths.
+    api("org.jetbrains.kotlinx:kotlinx-coroutines-core")
+
     // SLF4J API for logging. Pulled in explicitly because the narrow Spring deps above don't bring
     // it transitively (in a full Spring Boot app it arrives via spring-boot-starter-logging).
     implementation("org.slf4j:slf4j-api")
@@ -29,6 +33,7 @@ dependencies {
     testImplementation("org.junit.jupiter:junit-jupiter")
     testImplementation(kotlin("test-junit5"))
     testImplementation("org.mockito.kotlin:mockito-kotlin:6.3.0")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
