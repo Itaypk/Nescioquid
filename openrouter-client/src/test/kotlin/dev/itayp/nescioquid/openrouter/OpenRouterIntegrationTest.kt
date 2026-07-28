@@ -84,9 +84,32 @@ class OpenRouterIntegrationTest {
         @JsonPropertyDescription("Approximate metro-area population in millions") val populationMillions: Double,
     )
 
+    /**
+     * Whether the configured [model] *enforces* structured outputs, asked of OpenRouter rather than
+     * assumed. A model that merely accepts `response_format` and then answers in prose (many do)
+     * cannot satisfy the structured-output test, and that is a property of the configured model, not
+     * a defect in the schema under test.
+     */
+    private fun modelEnforcesStructuredOutputs(): Boolean {
+        val properties = AiClientProperties(
+            apiKey = requireNotNull(apiKey),
+            baseUrl = "https://openrouter.ai/api/v1",
+            configuredModels = setOf(model),
+        )
+        return ModelCapabilityService(properties)
+            .apply { prefetch() }
+            .supportsStructuredOutputs(model)
+    }
+
     @Test
     fun `structured output reply conforms to a schema generated from a DTO`() {
         assumeTrue(apiKey != null, "OPENROUTER_API_KEY not set; skipping live OpenRouter test")
+        // Checked up front, so a model that *does* advertise the capability and still returns prose
+        // fails loudly — that would be a real schema regression, which is what this test guards.
+        assumeTrue(
+            modelEnforcesStructuredOutputs(),
+            "model '$model' does not advertise `structured_outputs`; skipping the structured-output check",
+        )
 
         val request = ChatRequest(
             model = model,

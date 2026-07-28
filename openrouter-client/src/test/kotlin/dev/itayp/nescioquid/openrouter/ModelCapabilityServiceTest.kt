@@ -119,8 +119,47 @@ class ModelCapabilityServiceTest {
     }
 
     @Test
+    fun `exposes supported_parameters and reports structured-output support from it`() {
+        val (svc, server) = service(models = setOf("some/model"))
+        server.expect(requestTo("https://openrouter.ai/api/v1/model/some/model"))
+            .andRespond(
+                withSuccess(
+                    """{"data":{"supported_parameters":["tools","structured_outputs","response_format"]}}""",
+                    MediaType.APPLICATION_JSON,
+                ),
+            )
+
+        svc.prefetch()
+
+        assertEquals(
+            listOf("tools", "structured_outputs", "response_format"),
+            svc.get("some/model")?.supportedParameters,
+        )
+        assertTrue(svc.supportsStructuredOutputs("some/model"))
+    }
+
+    @Test
+    fun `accepting response_format without structured_outputs is not structured-output support`() {
+        val (svc, server) = service(models = setOf("some/model"))
+        server.expect(requestTo("https://openrouter.ai/api/v1/model/some/model"))
+            .andRespond(
+                withSuccess(
+                    // The distinction that matters: a model can take the parameter and still answer
+                    // in prose. Only `structured_outputs` means the schema is enforced.
+                    """{"data":{"supported_parameters":["tools","response_format"]}}""",
+                    MediaType.APPLICATION_JSON,
+                ),
+            )
+
+        svc.prefetch()
+
+        assertFalse(svc.supportsStructuredOutputs("some/model"))
+    }
+
+    @Test
     fun `unknown model defaults to not supported`() {
         val (svc, _) = service()
         assertFalse(svc.supportsReasoning("never/fetched"))
+        assertFalse(svc.supportsStructuredOutputs("never/fetched"))
     }
 }

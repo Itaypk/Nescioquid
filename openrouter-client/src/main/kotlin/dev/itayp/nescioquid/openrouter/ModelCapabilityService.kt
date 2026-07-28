@@ -58,6 +58,14 @@ class ModelCapabilityService(
     /** Convenience: whether [model] accepts the reasoning parameter. False when unknown. */
     fun supportsReasoning(model: String): Boolean = capabilities[model]?.supportsReasoning == true
 
+    /**
+     * Convenience: whether [model] *enforces* `response_format: {type: json_schema}`. False when
+     * unknown. A model without this will happily accept the parameter and then answer in prose, so
+     * check it before relying on a structured reply.
+     */
+    fun supportsStructuredOutputs(model: String): Boolean =
+        capabilities[model]?.supportedParameters?.contains("structured_outputs") == true
+
     private fun fetch(model: String) {
         try {
             // Concatenate the slug into the path rather than passing it as a URI variable: a slug like
@@ -75,6 +83,7 @@ class ModelCapabilityService(
                 reasoningMandatory = data?.reasoning?.mandatory ?: false,
                 reasoningDefaultEnabled = data?.reasoning?.defaultEnabled ?: false,
                 inputModalities = data?.architecture?.inputModalities ?: emptyList(),
+                supportedParameters = data?.supportedParameters ?: emptyList(),
             )
             capabilities[model] = caps
             log.info(
@@ -99,6 +108,9 @@ class ModelCapabilityService(
  * @param reasoningMandatory whether reasoning cannot be disabled.
  * @param reasoningDefaultEnabled whether reasoning is on by default (no explicit request needed).
  * @param inputModalities accepted input modalities (text/image/audio/…), for multimodal input.
+ * @param supportedParameters the raw `supported_parameters` list OpenRouter reports (`tools`,
+ *   `structured_outputs`, `response_format`, `reasoning`, …). Empty when unknown. Exposed whole
+ *   because callers need to ask about capabilities this class has no dedicated accessor for.
  */
 data class ModelCapabilities(
     val supportsReasoning: Boolean,
@@ -107,6 +119,7 @@ data class ModelCapabilities(
     val reasoningMandatory: Boolean = false,
     val reasoningDefaultEnabled: Boolean = false,
     val inputModalities: List<String> = emptyList(),
+    val supportedParameters: List<String> = emptyList(),
 )
 
 @JsonIgnoreProperties(ignoreUnknown = true)

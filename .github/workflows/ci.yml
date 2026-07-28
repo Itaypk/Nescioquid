@@ -10,6 +10,10 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # The live integration tests talk to OpenRouter over a streaming connection with no read
+    # timeout, so a stalled provider can hang the job indefinitely rather than failing it. Cap the
+    # job so a stall costs ten minutes instead of the six-hour default.
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
 
