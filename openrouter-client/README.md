@@ -10,8 +10,10 @@ Consumers are expected to be **Spring Boot apps** (the client uses `RestClient` 
 
 | Class | Role |
 | --- | --- |
-| `AiClient` | The transport. `chat(request, context)` sends a request with bearer auth and 3-attempt exponential backoff on 5xx/429, notifying the gate/listener seams. The `request` is the source of truth for the wire, including `reasoning`. |
+| `AiClient` | The transport. `chat(request, context)` sends a request with bearer auth and 3-attempt exponential backoff on 5xx/429, notifying the gate/listener seams. `chatStream(request, context)` is the streaming counterpart, returning a cold `Flow<ChatStreamEvent>`. The `request` is the source of truth for the wire, including `reasoning`. |
 | `AiDtos.kt` | Request/response DTOs — `ChatRequest`/`ChatResponse`, the string↔parts `MessageContent` union, prompt-caching `cache_control`, `ReasoningConfig`, usage/token details. Jackson-only. |
+| `AiStreamEvents.kt` | `ChatStreamEvent` — the `ContentDelta` / `ReasoningDelta` / `ToolCallReady` / `Completed` union a `chatStream` collector sees — and `OpenRouterStreamException`. |
+| `AiStreamDtos.kt` | The SSE chunk/delta wire shapes. Internal plumbing for `chatStream`; you work with `ChatStreamEvent` instead. |
 | `ModelCapabilityService` | Fetches `/model/{slug}` capabilities (reasoning support, supported efforts, input modalities). Prefetches configured models at startup; caches in memory. A utility for callers deciding what to put on a request. |
 | `AiClientProperties` | The minimal config contract (`apiKey` / `baseUrl` / `configuredModels`) you supply as a bean. |
 | `AiCallContext` | Per-call attribution carrier (user, conversation type, optional session/conversation ids). |
@@ -65,6 +67,45 @@ val text = response.choices.first().message.contentText
 
 Component-scan `dev.itayp.nescioquid.openrouter` (and provide the two seams + `AiClientProperties`)
 and the client wires itself.
+
+## Streaming
+
+`chatStream` returns a **cold** `Flow<ChatStreamEvent>`: nothing is sent until you collect it, and
+each collection is one independent call — one gate check, one listener notification. It ends with a
+`Completed` carrying the same aggregated `ChatResponse` `chat` would have returned, so usage
+accounting is identical on both paths.
+
+```kotlin
+aiClient.chatStream(request, AiCallContext(userId = userId, conversationType = "chat"))
+    .collect { event ->
+        when (event) {
+            is ChatStreamEvent.ContentDelta -> sink.send(event.text)
+            is ChatStreamEvent.ReasoningDelta -> sink.sendThinking(event.text)
+            is ChatStreamEvent.ToolCallReady -> dispatch(event.toolCall)   // arguments are complete
+            is ChatStreamEvent.Completed -> log.info("used {}", event.response.usage)
+        }
+    }
+```
+
+Notes:
+
+- **You don't set `stream` or `usage`.** `chatStream` applies both to its own copy of the request —
+  `usage.include` is what makes OpenRouter emit the terminal usage chunk. Everything else on your
+  `ChatRequest` is sent as given. The blocking `chat` path sends neither field.
+- **Tool calls are reassembled for you.** OpenRouter streams `arguments` as JSON fragments; a
+  `ToolCallReady` is emitted only once a call is fully assembled, so `function.arguments` always
+  parses.
+- **Reasoning is stream-only.** `ReasoningDelta` is kept out of the assistant message, so it does
+  not appear in `Completed.response` — capture it as it arrives if you need it.
+- **Errors.** A non-2xx response throws the same `HttpClientErrorException` / `HttpServerErrorException`
+  as `chat`, after the same backoff; only connection establishment is retried, never a stream that
+  has already delivered events. An `error` object arriving *inside* a 200 stream throws
+  `OpenRouterStreamException`. Both fire `recordFailure`.
+- **Cancellation** closes the connection and notifies neither seam — the flow unwinds after your
+  collector has moved on, so a notification from there would race with whatever you do next. Account
+  for abandoned generations at your own cancellation point. Cancellation takes effect at the next
+  event or keepalive, since a read already parked in the socket is not interrupted.
+- The flow runs on `Dispatchers.IO` (the reads are blocking) and hands events over without buffering.
 
 ## Structured outputs & DTO-driven schemas
 

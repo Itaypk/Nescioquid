@@ -10,6 +10,10 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # The live integration tests talk to OpenRouter over a streaming connection with no read
+    # timeout, so a stalled provider can hang the job indefinitely rather than failing it. Cap the
+    # job so a stall costs ten minutes instead of the six-hour default.
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
 
@@ -24,3 +28,9 @@ jobs:
 
       - name: Build
         run: ./gradlew build --no-daemon
+        # OpenRouterIntegrationTest reads these via System.getenv and skips itself (assumeTrue) when
+        # the key is absent — which is what happens on pull requests from forks, since GitHub does
+        # not expose secrets to those runs. Same-repo branches do get the key and run the live tests.
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          OPENROUTER_TEST_MODEL: ${{ secrets.OPENROUTER_TEST_MODEL }}
