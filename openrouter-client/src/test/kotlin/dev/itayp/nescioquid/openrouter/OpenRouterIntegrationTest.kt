@@ -7,6 +7,8 @@ import org.junit.jupiter.api.Assumptions.abort
 import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.Timeout
+import java.util.concurrent.TimeUnit
 import org.springframework.web.client.HttpClientErrorException
 import tools.jackson.module.kotlin.jacksonObjectMapper
 import java.io.File
@@ -30,6 +32,9 @@ import kotlin.test.assertTrue
  * Tagged `integration` so they can be selected/excluded by tag if desired.
  */
 @Tag("integration")
+// Belt and braces alongside the client's own socket timeouts: a live call that wedges for any
+// reason fails this test rather than running until the CI job is killed, which has happened twice.
+@Timeout(value = 90, unit = TimeUnit.SECONDS)
 class OpenRouterIntegrationTest {
 
     private val apiKey: String? = resolveConfig("OPENROUTER_API_KEY")

@@ -28,11 +28,18 @@ import java.util.concurrent.ConcurrentHashMap
 @Component
 class ModelCapabilityService(
     private val properties: AiClientProperties,
-    restClientBuilder: RestClient.Builder = RestClient.builder(),
+    // Same arrangement as AiClient: null means "build our own", which carries the timeouts. Without
+    // them a hung capability fetch blocks whatever triggered it indefinitely — startup prefetch is
+    // best-effort, but only against *failures*, not against never returning.
+    restClientBuilder: RestClient.Builder? = null,
 ) {
     private val log = LoggerFactory.getLogger(ModelCapabilityService::class.java)
 
-    private val client: RestClient = restClientBuilder
+    private val client: RestClient = (
+        restClientBuilder
+            ?: RestClient.builder()
+                .requestFactory(timeoutRequestFactory(properties.connectTimeout, properties.readTimeout))
+        )
         .baseUrl(properties.baseUrl)
         .defaultHeader("Authorization", "Bearer ${properties.apiKey.trim()}")
         .build()

@@ -23,6 +23,7 @@ import org.springframework.web.client.ResourceAccessException
 import org.springframework.web.client.RestClient
 import tools.jackson.core.JacksonException
 import java.io.IOException
+import java.time.Duration
 import tools.jackson.module.kotlin.jacksonObjectMapper
 
 /**
@@ -34,29 +35,47 @@ import tools.jackson.module.kotlin.jacksonObjectMapper
  * only bounds *obtaining* the response, so a provider that opens a stream and then goes silent would
  * hang the collector indefinitely under it.
  */
-private fun timeoutRequestFactory(properties: AiClientProperties): ClientHttpRequestFactory =
+internal fun timeoutRequestFactory(connectTimeout: Duration, readTimeout: Duration): ClientHttpRequestFactory =
     SimpleClientHttpRequestFactory().apply {
-        setConnectTimeout(properties.connectTimeout.toMillis().toInt())
-        setReadTimeout(properties.readTimeout.toMillis().toInt())
+        setConnectTimeout(connectTimeout.toMillis().toInt())
+        setReadTimeout(readTimeout.toMillis().toInt())
     }
 
 @Component
 class AiClient(
-    properties: AiClientProperties,
+    private val properties: AiClientProperties,
     private val callGate: AiCallGate,
     private val callListener: AiCallListener,
     // Injectable so tests can bind a MockRestServiceServer, as ModelCapabilityService already does.
-    // The default carries the timeouts; a builder passed in here owns its own transport config and
-    // is left alone, since overriding its request factory would replace whatever it was given for
-    // (a MockRestServiceServer, a consumer's tuned HTTP client).
-    restClientBuilder: RestClient.Builder = RestClient.builder().requestFactory(timeoutRequestFactory(properties)),
+    // Null means "build our own", which is what carries the timeouts; a builder passed in here owns
+    // its transport config and is used as given for both paths, since overriding its request factory
+    // would replace whatever it was supplied for (a MockRestServiceServer, a tuned HTTP client).
+    restClientBuilder: RestClient.Builder? = null,
 ) {
     private val log = LoggerFactory.getLogger(AiClient::class.java)
 
-    private val client = restClientBuilder
+    private fun build(builder: RestClient.Builder) = builder
         .baseUrl(properties.baseUrl)
         .defaultHeader("Authorization", "Bearer ${properties.apiKey.trim()}")
         .build()
+
+    private val client = build(
+        restClientBuilder
+            ?: RestClient.builder()
+                .requestFactory(timeoutRequestFactory(properties.connectTimeout, properties.readTimeout)),
+    )
+
+    // A second client purely for the streaming path, so it can carry the much tighter idle timeout
+    // without shortening the blocking path's budget for a whole generation. When a builder is
+    // injected there is nothing to vary — the caller owns the transport — so both share one client.
+    private val streamClient = if (restClientBuilder != null) {
+        client
+    } else {
+        build(
+            RestClient.builder()
+                .requestFactory(timeoutRequestFactory(properties.connectTimeout, properties.streamIdleTimeout)),
+        )
+    }
 
     // Private to the streaming path: chunks are parsed off the SSE body ourselves rather than
     // through the RestClient's message converters, since the body is a stream of JSON objects
@@ -105,8 +124,8 @@ class AiClient(
      *   [chat] throws, after the same 3-attempt backoff on 5xx and 429,
      * - an `error` object arriving inside an already-200 stream, or an unparseable chunk, throws
      *   [OpenRouterStreamException],
-     * - the socket dying mid-stream — including a provider that stalls past
-     *   [AiClientProperties.readTimeout] — throws [ResourceAccessException], as the blocking path
+     * - the socket dying mid-stream — including a provider that goes quiet for longer than
+     *   [AiClientProperties.streamIdleTimeout] — throws [ResourceAccessException], as the blocking path
      *   does for the same class of failure.
      *
      * In both cases [AiCallListener.recordFailure] fires exactly once, so accounting sees a call
@@ -183,7 +202,7 @@ class AiClient(
         var delayMs = 2000L
         var lastException: RuntimeException? = null
         repeat(maxAttempts) { attempt ->
-            val response = client.post()
+            val response = streamClient.post()
                 .uri("/chat/completions")
                 .contentType(MediaType.APPLICATION_JSON)
                 .accept(MediaType.TEXT_EVENT_STREAM)
