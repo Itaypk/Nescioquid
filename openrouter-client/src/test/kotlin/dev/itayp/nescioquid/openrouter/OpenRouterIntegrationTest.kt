@@ -3,9 +3,11 @@ package dev.itayp.nescioquid.openrouter
 import com.fasterxml.jackson.annotation.JsonPropertyDescription
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
+import org.junit.jupiter.api.Assumptions.abort
 import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
+import org.springframework.web.client.HttpClientErrorException
 import tools.jackson.module.kotlin.jacksonObjectMapper
 import java.io.File
 import java.util.UUID
@@ -56,6 +58,24 @@ class OpenRouterIntegrationTest {
 
     private fun context() = AiCallContext(userId = UUID.randomUUID(), conversationType = "integration-test")
 
+    /**
+     * Runs [block], **aborting** the test rather than failing it when OpenRouter rate-limits the
+     * call. [AiClient] already retries a 429 three times with backoff, so reaching here means the
+     * limit is sustained — a per-minute or daily cap on the key, which is an environmental
+     * condition exactly like the missing-key case these tests already skip on. Failing CI for it
+     * would make the live suite noise rather than signal; a genuine API or schema regression still
+     * surfaces as a normal failure.
+     *
+     * `inline` so [block] inherits the caller's coroutine context — the streaming tests collect a
+     * Flow inside it, which is a suspending call.
+     */
+    private inline fun <T> skippingRateLimits(block: () -> T): T =
+        try {
+            block()
+        } catch (e: HttpClientErrorException.TooManyRequests) {
+            abort("OpenRouter rate-limited this run (429 after retries); skipping the live check")
+        }
+
     enum class TemperatureUnit { CELSIUS, FAHRENHEIT }
 
     data class CapitalFact(
@@ -81,7 +101,7 @@ class OpenRouterIntegrationTest {
             provider = ProviderPreferences(zdr = false),
         )
 
-        val response = aiClient().chat(request, context())
+        val response = skippingRateLimits { aiClient().chat(request, context()) }
         val content = response.choices.first().message.contentText
         assertNotNull(content, "expected string content in the response")
 
@@ -117,7 +137,7 @@ class OpenRouterIntegrationTest {
             provider = ProviderPreferences(zdr = false), // see the structured-output test above
         )
 
-        val response = aiClient().chat(request, context())
+        val response = skippingRateLimits { aiClient().chat(request, context()) }
         val toolCalls = response.choices.first().message.toolCalls
         assertNotNull(toolCalls, "expected the model to return a tool call")
         assertTrue(toolCalls.isNotEmpty(), "expected at least one tool call")
@@ -139,7 +159,7 @@ class OpenRouterIntegrationTest {
             provider = ProviderPreferences(zdr = false), // see the structured-output test above
         )
 
-        val events = aiClient().chatStream(request, context()).toList()
+        val events = skippingRateLimits { aiClient().chatStream(request, context()).toList() }
 
         val deltas = events.filterIsInstance<ChatStreamEvent.ContentDelta>()
         assertTrue(deltas.size > 1, "expected the reply to arrive in more than one chunk, got ${deltas.size}")
@@ -173,7 +193,7 @@ class OpenRouterIntegrationTest {
             provider = ProviderPreferences(zdr = false),
         )
 
-        val events = aiClient().chatStream(request, context()).toList()
+        val events = skippingRateLimits { aiClient().chatStream(request, context()).toList() }
 
         val ready = events.filterIsInstance<ChatStreamEvent.ToolCallReady>()
         assertTrue(ready.isNotEmpty(), "expected the model to return a tool call")
