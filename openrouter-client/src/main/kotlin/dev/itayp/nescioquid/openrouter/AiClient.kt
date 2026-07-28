@@ -11,15 +11,34 @@ import kotlinx.coroutines.flow.buffer
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import org.slf4j.LoggerFactory
+import org.springframework.http.client.ClientHttpRequestFactory
+import org.springframework.http.client.SimpleClientHttpRequestFactory
 import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpStatusCode
 import org.springframework.http.MediaType
 import org.springframework.stereotype.Component
 import org.springframework.web.client.HttpClientErrorException
 import org.springframework.web.client.HttpServerErrorException
+import org.springframework.web.client.ResourceAccessException
 import org.springframework.web.client.RestClient
 import tools.jackson.core.JacksonException
+import java.io.IOException
 import tools.jackson.module.kotlin.jacksonObjectMapper
+
+/**
+ * The request factory the client uses by default.
+ *
+ * [SimpleClientHttpRequestFactory] specifically: its read timeout becomes the socket's `SO_TIMEOUT`,
+ * so it fires on a *stalled read of the response body* — which is the failure that matters to
+ * [AiClient.chatStream], where the body is a long-lived stream. The JDK-based factory's read timeout
+ * only bounds *obtaining* the response, so a provider that opens a stream and then goes silent would
+ * hang the collector indefinitely under it.
+ */
+private fun timeoutRequestFactory(properties: AiClientProperties): ClientHttpRequestFactory =
+    SimpleClientHttpRequestFactory().apply {
+        setConnectTimeout(properties.connectTimeout.toMillis().toInt())
+        setReadTimeout(properties.readTimeout.toMillis().toInt())
+    }
 
 @Component
 class AiClient(
@@ -27,8 +46,10 @@ class AiClient(
     private val callGate: AiCallGate,
     private val callListener: AiCallListener,
     // Injectable so tests can bind a MockRestServiceServer, as ModelCapabilityService already does.
-    // Defaulted, so existing consumers construct the client exactly as before.
-    restClientBuilder: RestClient.Builder = RestClient.builder(),
+    // The default carries the timeouts; a builder passed in here owns its own transport config and
+    // is left alone, since overriding its request factory would replace whatever it was given for
+    // (a MockRestServiceServer, a consumer's tuned HTTP client).
+    restClientBuilder: RestClient.Builder = RestClient.builder().requestFactory(timeoutRequestFactory(properties)),
 ) {
     private val log = LoggerFactory.getLogger(AiClient::class.java)
 
@@ -83,7 +104,10 @@ class AiClient(
      * - a non-2xx response throws the same [HttpClientErrorException] / [HttpServerErrorException]
      *   [chat] throws, after the same 3-attempt backoff on 5xx and 429,
      * - an `error` object arriving inside an already-200 stream, or an unparseable chunk, throws
-     *   [OpenRouterStreamException].
+     *   [OpenRouterStreamException],
+     * - the socket dying mid-stream — including a provider that stalls past
+     *   [AiClientProperties.readTimeout] — throws [ResourceAccessException], as the blocking path
+     *   does for the same class of failure.
      *
      * In both cases [AiCallListener.recordFailure] fires exactly once, so accounting sees a call
      * resolve exactly as it does on the blocking path. Deltas already emitted stay valid; only the
@@ -117,6 +141,14 @@ class AiClient(
             // not notified: this coroutine unwinds after the collector has already moved on, so any
             // notification here would race with whatever the caller does next.
             throw e
+        } catch (e: IOException) {
+            // The socket died mid-stream — a stalled provider hitting the read timeout, a reset, a
+            // truncated body. Kotlin has no checked exceptions, so this would otherwise sail past
+            // the RuntimeException catch below and skip accounting entirely. Rethrown as
+            // ResourceAccessException because that is what the blocking path surfaces for the same
+            // class of failure (RestClient wraps IO errors), keeping the two paths uniform.
+            callListener.recordFailure(context, request)
+            throw ResourceAccessException("I/O error on AI API stream: ${e.message}", e)
         } catch (e: RuntimeException) {
             callListener.recordFailure(context, request)
             throw e

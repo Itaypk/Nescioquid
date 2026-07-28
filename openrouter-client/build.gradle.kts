@@ -52,6 +52,15 @@ kotlin {
 
 tasks.withType<Test> {
     useJUnitPlatform()
+
+    // Gradle prints nothing for skipped tests by default, which hides the case that matters here:
+    // the live OpenRouter tests skip themselves when the key is absent, the run is rate-limited, or
+    // the configured model lacks a capability they need. Without this, a build that verified nothing
+    // against the real API looks identical to one that verified everything.
+    testLogging {
+        events("skipped", "failed")
+        exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.SHORT
+    }
 }
 
 publishing {
