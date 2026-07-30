@@ -61,7 +61,7 @@ class OpenRouterIntegrationTest {
         )
     }
 
-    private fun context() = AiCallContext(userId = UUID.randomUUID(), conversationType = "integration-test")
+    private fun context() = AiCallContext(userId = UUID.randomUUID().toString(), conversationType = "integration-test")
 
     /**
      * Runs [block], **aborting** the test rather than failing it when OpenRouter rate-limits the

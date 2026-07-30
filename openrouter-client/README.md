@@ -32,7 +32,10 @@ Spring beans:
 | `AiCallGate` (`fun interface`) | Pre-call veto — throw to refuse a call (opt-out toggle, per-user rate/budget limit). No default is shipped. |
 | `AiCallListener` | Post-call `recordSuccess` / `recordFailure` for usage accounting / metrics. Must be best-effort. |
 
-`conversationType` (on `AiCallContext`) is an opaque string; you assign your own vocabulary.
+Every field on `AiCallContext` — `userId`, `sessionId`, `conversationId` and `conversationType` — is an
+opaque string the library only hands back to your gate and listener; you assign the vocabulary and the id
+scheme. On UUID keys, pass `uuid.toString()`. (They were `UUID` up to 0.5.0, which made a consumer whose
+keys are `bigint` invent a mapping for an attribution parameter.)
 
 Reasoning is **not** a seam: the client applies no central reasoning policy. Set
 `ChatRequest.reasoning` yourself (optionally guided by `ModelCapabilityService`) before calling
