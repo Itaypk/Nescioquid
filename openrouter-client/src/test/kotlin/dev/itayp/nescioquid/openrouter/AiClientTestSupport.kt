@@ -2,12 +2,11 @@ package dev.itayp.nescioquid.openrouter
 
 import org.springframework.test.web.client.MockRestServiceServer
 import org.springframework.web.client.RestClient
-import java.util.UUID
 
 const val TEST_BASE_URL = "https://openrouter.ai/api/v1"
 const val COMPLETIONS_URL = "$TEST_BASE_URL/chat/completions"
 
-val testContext = AiCallContext(userId = UUID.fromString("00000000-0000-0000-0000-000000000001"), conversationType = "test")
+val testContext = AiCallContext(userId = "00000000-0000-0000-0000-000000000001", conversationType = "test")
 
 fun testRequest(model: String = "openai/gpt-oss-20b:free") =
     ChatRequest(model = model, messages = listOf(ChatMessage("user", "Hi")))
