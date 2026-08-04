@@ -53,7 +53,7 @@ class OpenRouterIntegrationTest {
         )
         return AiClient(
             properties = properties,
-            callGate = AiCallGate { _, _ -> },
+            callGate = { _, _ -> },
             callListener = object : AiCallListener {
                 override fun recordSuccess(context: AiCallContext, request: ChatRequest, response: ChatResponse) = Unit
                 override fun recordFailure(context: AiCallContext, request: ChatRequest) = Unit
@@ -77,7 +77,7 @@ class OpenRouterIntegrationTest {
     private inline fun <T> skippingRateLimits(block: () -> T): T =
         try {
             block()
-        } catch (e: HttpClientErrorException.TooManyRequests) {
+        } catch (_: HttpClientErrorException.TooManyRequests) {
             abort("OpenRouter rate-limited this run (429 after retries); skipping the live check")
         }
 
@@ -136,7 +136,7 @@ class OpenRouterIntegrationTest {
         val fact = parseAssistantJsonResponse(objectMapper, content, CapitalFact::class.java)
         assertEquals("Paris", fact.city)
         assertTrue(fact.country.contains("France", ignoreCase = true), "country was '${fact.country}'")
-        assertTrue(fact.populationMillions > 0, "population was ${fact.populationMillions}")
+        assertTrue(fact.populationMillions > 0.0, "population was ${fact.populationMillions}")
     }
 
     data class WeatherQuery(
