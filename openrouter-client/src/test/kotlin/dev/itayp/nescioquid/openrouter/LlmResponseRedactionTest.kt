@@ -82,4 +82,26 @@ class LlmResponseRedactionTest {
 
         assertEquals("(unparseable) ***", redacted)
     }
+
+    @Test
+    fun `a custom redactValue can truncate instead of mask, for content that is long but not sensitive`() {
+        val redacted = redactLlmResponse(
+            """{"title":"Call the dentist about a checkup and reschedule for next week"}""",
+            redactValue = truncateValue(10),
+        )
+
+        assertTrue(redacted.contains("\"Call the d… (61 chars)\""))
+    }
+
+    @Test
+    fun `truncateValue passes short values through unchanged`() {
+        assertEquals("hi", truncateValue(10)("hi"))
+    }
+
+    @Test
+    fun `a custom redactValue also governs the unparseable fallback`() {
+        val redacted = redactLlmResponse("Sorry, I can't help with that request right now.", redactValue = truncateValue(10))
+
+        assertEquals("(unparseable) Sorry, I c… (48 chars)", redacted)
+    }
 }
