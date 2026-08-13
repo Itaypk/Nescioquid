@@ -1,0 +1,22 @@
+name: Clear Actions Artifacts
+
+on:
+  workflow_dispatch:
+
+permissions:
+  actions: write
+
+jobs:
+  clear-artifacts:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete all artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "repos/${{ github.repository }}/actions/artifacts" --paginate --jq '.artifacts[].id' | \
+          while read -r id; do
+            echo "Deleting artifact $id"
+            gh api -X DELETE "repos/${{ github.repository }}/actions/artifacts/$id"
+          done
+          echo "Done."
