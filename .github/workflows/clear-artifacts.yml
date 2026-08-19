@@ -10,13 +10,18 @@ jobs:
   clear-artifacts:
     runs-on: ubuntu-latest
     steps:
-      - name: Delete all artifacts
+      - name: Report and delete all artifacts
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh api "repos/${{ github.repository }}/actions/artifacts" --paginate --jq '.artifacts[].id' | \
-          while read -r id; do
-            echo "Deleting artifact $id"
+          artifacts=$(gh api "repos/${{ github.repository }}/actions/artifacts" --paginate --jq '.artifacts[] | [.id, .size_in_bytes] | @tsv')
+          count=$(printf '%s\n' "$artifacts" | grep -c . || true)
+          total_bytes=$(printf '%s\n' "$artifacts" | awk -F'\t' '{sum+=$2} END {print sum+0}')
+          total_mb=$(awk "BEGIN {printf \"%.2f\", $total_bytes/1024/1024}")
+          echo "Found $count artifact(s), totaling ${total_mb} MB"
+          printf '%s\n' "$artifacts" | while IFS=$'\t' read -r id size; do
+            [ -z "$id" ] && continue
+            echo "Deleting artifact $id ($size bytes)"
             gh api -X DELETE "repos/${{ github.repository }}/actions/artifacts/$id"
           done
-          echo "Done."
+          echo "Done. Deleted $count artifact(s), freed approximately ${total_mb} MB."
