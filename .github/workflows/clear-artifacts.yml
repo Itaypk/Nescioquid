@@ -2,6 +2,8 @@ name: Clear Actions Artifacts
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: '17 3 * * 0'
 
 permissions:
   actions: write
