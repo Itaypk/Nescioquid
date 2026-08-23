@@ -162,4 +162,41 @@ class ModelCapabilityServiceTest {
         assertFalse(svc.supportsReasoning("never/fetched"))
         assertFalse(svc.supportsStructuredOutputs("never/fetched"))
     }
+
+    @Test
+    fun `captures output modalities and reports inline image output`() {
+        val (svc, server) = service(models = setOf("google/gemini-3.1-flash-image"))
+        server.expect(requestTo("https://openrouter.ai/api/v1/model/google/gemini-3.1-flash-image"))
+            .andRespond(
+                withSuccess(
+                    """{"data":{"architecture":{"input_modalities":["text","image"],
+                       "output_modalities":["text","image"]}}}""",
+                    MediaType.APPLICATION_JSON,
+                ),
+            )
+
+        svc.prefetch()
+
+        server.verify()
+        assertEquals(listOf("text", "image"), svc.get("google/gemini-3.1-flash-image")?.outputModalities)
+        assertTrue(svc.supportsImageOutput("google/gemini-3.1-flash-image"))
+    }
+
+    @Test
+    fun `a text-only model does not report image output`() {
+        val (svc, server) = service(models = setOf("openai/gpt-oss-20b:free"))
+        server.expect(requestTo("https://openrouter.ai/api/v1/model/openai/gpt-oss-20b:free"))
+            .andRespond(
+                withSuccess(
+                    """{"data":{"architecture":{"input_modalities":["text"],"output_modalities":["text"]}}}""",
+                    MediaType.APPLICATION_JSON,
+                ),
+            )
+
+        svc.prefetch()
+
+        assertFalse(svc.supportsImageOutput("openai/gpt-oss-20b:free"))
+        // An unfetched model is likewise not assumed capable.
+        assertFalse(svc.supportsImageOutput("some/other-model"))
+    }
 }

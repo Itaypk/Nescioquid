@@ -19,8 +19,10 @@ import java.util.concurrent.ConcurrentHashMap
  *   / `default_effort` (so we can validate configured effort levels and label the default). Sending
  *   a reasoning arg to a model that doesn't support it is an illegal argument, and an effort value
  *   outside `supported_efforts` is likewise rejected.
- * - **Input modalities** — `architecture.input_modalities` (text/image/audio/…), captured for
- *   multimodal-input features.
+ * - **Modalities** — `architecture.input_modalities` and `architecture.output_modalities`
+ *   (text/image/audio/…), captured for multimodal features. Note this describes *chat* models; the
+ *   dedicated image-generation models have their own endpoint and shape, served by
+ *   [ImageModelCapabilityService].
  *
  * The cache is populated once at startup (best-effort). An unfetched/unknown model returns null
  * capabilities, and callers treat that conservatively (reasoning omitted).
@@ -35,14 +37,7 @@ class ModelCapabilityService(
 ) {
     private val log = LoggerFactory.getLogger(ModelCapabilityService::class.java)
 
-    private val client: RestClient = (
-        restClientBuilder
-            ?: RestClient.builder()
-                .requestFactory(timeoutRequestFactory(properties.connectTimeout, properties.readTimeout))
-        )
-        .baseUrl(properties.baseUrl)
-        .defaultHeader("Authorization", "Bearer ${properties.apiKey.trim()}")
-        .build()
+    private val client: RestClient = openRouterRestClient(properties, restClientBuilder, properties.readTimeout)
 
     // model slug -> capabilities. Absent key means "unknown" (fetch failed or not attempted).
     private val capabilities = ConcurrentHashMap<String, ModelCapabilities>()
@@ -73,6 +68,16 @@ class ModelCapabilityService(
     fun supportsStructuredOutputs(model: String): Boolean =
         capabilities[model]?.supportedParameters?.contains("structured_outputs") == true
 
+    /**
+     * Convenience: whether [model] can emit images inline in a chat completion (`modalities`), as
+     * opposed to being an image-generation model. False when unknown.
+     *
+     * This is a different question from "can I send this to `/images`" — for that, ask
+     * [ImageModelCapabilityService].
+     */
+    fun supportsImageOutput(model: String): Boolean =
+        capabilities[model]?.outputModalities?.contains("image") == true
+
     private fun fetch(model: String) {
         try {
             // Concatenate the slug into the path rather than passing it as a URI variable: a slug like
@@ -90,12 +95,13 @@ class ModelCapabilityService(
                 reasoningMandatory = data?.reasoning?.mandatory ?: false,
                 reasoningDefaultEnabled = data?.reasoning?.defaultEnabled ?: false,
                 inputModalities = data?.architecture?.inputModalities ?: emptyList(),
+                outputModalities = data?.architecture?.outputModalities ?: emptyList(),
                 supportedParameters = data?.supportedParameters ?: emptyList(),
             )
             capabilities[model] = caps
             log.info(
-                "Fetched model capabilities: model={} supportsReasoning={} supportedEfforts={} defaultEffort={} inputModalities={}",
-                model, caps.supportsReasoning, caps.supportedEfforts, caps.defaultEffort, caps.inputModalities,
+                "Fetched model capabilities: model={} supportsReasoning={} supportedEfforts={} defaultEffort={} inputModalities={} outputModalities={}",
+                model, caps.supportsReasoning, caps.supportedEfforts, caps.defaultEffort, caps.inputModalities, caps.outputModalities,
             )
         } catch (e: Exception) {
             // Best-effort: leave the model unknown (reasoning omitted) rather than failing startup.
@@ -115,6 +121,7 @@ class ModelCapabilityService(
  * @param reasoningMandatory whether reasoning cannot be disabled.
  * @param reasoningDefaultEnabled whether reasoning is on by default (no explicit request needed).
  * @param inputModalities accepted input modalities (text/image/audio/…), for multimodal input.
+ * @param outputModalities modalities the model can emit (text/image/…), for multimodal output.
  * @param supportedParameters the raw `supported_parameters` list OpenRouter reports (`tools`,
  *   `structured_outputs`, `response_format`, `reasoning`, …). Empty when unknown. Exposed whole
  *   because callers need to ask about capabilities this class has no dedicated accessor for.
@@ -126,6 +133,7 @@ data class ModelCapabilities(
     val reasoningMandatory: Boolean = false,
     val reasoningDefaultEnabled: Boolean = false,
     val inputModalities: List<String> = emptyList(),
+    val outputModalities: List<String> = emptyList(),
     val supportedParameters: List<String> = emptyList(),
 )
 
@@ -152,4 +160,5 @@ private data class ReasoningInfo(
 @JsonIgnoreProperties(ignoreUnknown = true)
 private data class Architecture(
     @JsonProperty("input_modalities") val inputModalities: List<String>? = null,
+    @JsonProperty("output_modalities") val outputModalities: List<String>? = null,
 )

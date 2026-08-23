@@ -126,7 +126,7 @@ class AiClientStreamTest {
         fixture.client.chatStream(testRequest(), testContext).toList()
 
         assertEquals(0, fixture.listener.failures)
-        val recorded = fixture.listener.successes.single()
+        val recorded = fixture.listener.chatSuccesses.single()
         assertEquals("ab", recorded.choices.first().message.contentText)
         assertEquals(4, recorded.usage?.promptTokens)
     }

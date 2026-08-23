@@ -30,4 +30,12 @@ data class AiClientProperties(
      * which is long enough to blow a CI budget several times over.
      */
     val streamIdleTimeout: Duration = Duration.ofSeconds(30),
+    /**
+     * Max time a socket read may block on an [ImageClient.generate] call.
+     *
+     * Separate from [readTimeout] because image generation is a different order of work: a 2K render
+     * routinely runs well past the budget a text completion needs, and raising [readTimeout] to suit
+     * it would leave a hung *chat* call sitting on the socket for minutes.
+     */
+    val imageReadTimeout: Duration = Duration.ofSeconds(180),
 )
