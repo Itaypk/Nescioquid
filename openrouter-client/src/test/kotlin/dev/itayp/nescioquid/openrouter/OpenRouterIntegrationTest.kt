@@ -29,6 +29,11 @@ import kotlin.test.assertTrue
  * run where a key is provided. Model defaults to `openai/gpt-5-nano` (which supports both structured
  * outputs and tool calls); override with `OPENROUTER_TEST_MODEL`.
  *
+ * The image-generation check runs against `black-forest-labs/flux.2-klein-4b` (chosen as the cheapest
+ * image model available); override with `OPENROUTER_IMAGE_TEST_MODEL`. Unlike the text calls here,
+ * an image generation costs real money on every run — cents rather than fractions of a cent — so
+ * keep that in mind when pointing it at a different model.
+ *
  * Tagged `integration` so they can be selected/excluded by tag if desired.
  */
 @Tag("integration")
@@ -42,6 +47,10 @@ class OpenRouterIntegrationTest {
     // (Free models often support neither — e.g. gpt-oss-20b:free ignores response_format and has no
     // provider that enforces tool_choice.)
     private val model: String = resolveConfig("OPENROUTER_TEST_MODEL") ?: "openai/gpt-5-nano"
+
+    // Cheapest image model found at the time of writing; override with OPENROUTER_IMAGE_TEST_MODEL.
+    private val imageModel: String =
+        resolveConfig("OPENROUTER_IMAGE_TEST_MODEL") ?: "black-forest-labs/flux.2-klein-4b"
     private val objectMapper = jacksonObjectMapper()
 
     private fun aiClient(): AiClient {
@@ -51,15 +60,27 @@ class OpenRouterIntegrationTest {
             baseUrl = "https://openrouter.ai/api/v1",
             configuredModels = emptySet(),
         )
-        return AiClient(
-            properties = properties,
-            callGate = { _, _ -> },
-            callListener = object : AiCallListener {
-                override fun recordSuccess(context: AiCallContext, request: ChatRequest, response: ChatResponse) = Unit
-                override fun recordFailure(context: AiCallContext, request: ChatRequest) = Unit
-            },
-        )
+        return AiClient(transport(properties))
     }
+
+    private fun imageClient(): ImageClient {
+        val key = requireNotNull(apiKey)
+        val properties = AiClientProperties(
+            apiKey = key,
+            baseUrl = "https://openrouter.ai/api/v1",
+            configuredModels = emptySet(),
+        )
+        return ImageClient(transport(properties))
+    }
+
+    private fun transport(properties: AiClientProperties) = OpenRouterTransport(
+        properties = properties,
+        callGate = { _, _ -> },
+        callListener = object : AiCallListener {
+            override fun recordSuccess(context: AiCallContext, request: AiRequest, response: AiResponse) = Unit
+            override fun recordFailure(context: AiCallContext, request: AiRequest) = Unit
+        },
+    )
 
     private fun context() = AiCallContext(userId = UUID.randomUUID().toString(), conversationType = "integration-test")
 
@@ -233,6 +254,45 @@ class OpenRouterIntegrationTest {
 
         val completed = events.last() as ChatStreamEvent.Completed
         assertEquals(listOf(call), completed.response.choices.first().message.toolCalls)
+    }
+
+    @Test
+    fun `generates a real image through the dedicated images endpoint`() {
+        assumeTrue(apiKey != null, "OPENROUTER_API_KEY not set; skipping live OpenRouter test")
+
+        val response = skippingRateLimits {
+            imageClient().generate(
+                ImageRequest(model = imageModel, prompt = "a single small red circle on a white background"),
+                context(),
+            )
+        }
+
+        val image = response.data.firstOrNull()
+        assertNotNull(image, "expected at least one generated image")
+        // The bytes must actually decode — a b64_json we cannot decode is the failure this catches.
+        assertTrue(image.bytes.size > 100, "expected real image bytes, got ${image.bytes.size}")
+        assertTrue(image.mediaType.startsWith("image/"), "unexpected media type ${image.mediaType}")
+        assertTrue(image.dataUrl.startsWith("data:${image.mediaType};base64,"))
+        // Image billing is all-or-nothing, so a completed generation always reports a cost.
+        assertNotNull(response.usage?.cost, "expected usage.cost on a completed generation")
+    }
+
+    @Test
+    fun `the images model listing reports the parameters the endpoint actually accepts`() {
+        assumeTrue(apiKey != null, "OPENROUTER_API_KEY not set; skipping live OpenRouter test")
+        val properties = AiClientProperties(
+            apiKey = requireNotNull(apiKey),
+            baseUrl = "https://openrouter.ai/api/v1",
+            configuredModels = emptySet(),
+        )
+
+        val service = ImageModelCapabilityService(properties).apply { prefetch() }
+
+        assertTrue(service.all().isNotEmpty(), "expected /images/models to list at least one model")
+        // The model the generation test uses must be in the listing, or that test is testing nothing.
+        val caps = service.get(imageModel)
+        assertNotNull(caps, "expected $imageModel in the /images/models listing")
+        assertTrue(caps.outputModalities.contains("image"), "expected $imageModel to output images")
     }
 
     private companion object {

@@ -51,30 +51,26 @@ class AiClientStreamTimeoutTest {
         server.stop(0)
     }
 
-    private fun client(readTimeout: Duration) = AiClient(
-        properties = AiClientProperties(
-            apiKey = "k",
-            baseUrl = "http://127.0.0.1:${server.address.port}",
-            configuredModels = emptySet(),
-            streamIdleTimeout = readTimeout,
+    private fun client(
+        streamIdleTimeout: Duration,
+        listener: RecordingListener = RecordingListener(),
+    ) = AiClient(
+        OpenRouterTransport(
+            properties = AiClientProperties(
+                apiKey = "k",
+                baseUrl = "http://127.0.0.1:${server.address.port}",
+                configuredModels = emptySet(),
+                streamIdleTimeout = streamIdleTimeout,
+            ),
+            callGate = { _, _ -> },
+            callListener = listener,
         ),
-        callGate = { _, _ -> },
-        callListener = RecordingListener(),
     )
 
     @Test
     fun `a stalled stream fails instead of hanging forever`() = runTest {
         val listener = RecordingListener()
-        val client = AiClient(
-            properties = AiClientProperties(
-                apiKey = "k",
-                baseUrl = "http://127.0.0.1:${server.address.port}",
-                configuredModels = emptySet(),
-                streamIdleTimeout = Duration.ofMillis(750),
-            ),
-            callGate = { _, _ -> },
-            callListener = listener,
-        )
+        val client = client(Duration.ofMillis(750), listener)
 
         val startedAt = System.nanoTime()
         val error = runCatching { client.chatStream(testRequest(), testContext).toList() }.exceptionOrNull()

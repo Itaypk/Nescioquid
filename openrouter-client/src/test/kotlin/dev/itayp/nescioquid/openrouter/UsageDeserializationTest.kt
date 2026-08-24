@@ -57,4 +57,25 @@ class UsageDeserializationTest {
         assertNull(usage.promptTokensDetails?.cacheWriteTokens)
         assertNull(usage.promptTokensDetails?.audioTokens)
     }
+
+    @Test
+    fun `reads the cost reported alongside token counts`() {
+        val usage = objectMapper.readValue(
+            """{"prompt_tokens":0,"completion_tokens":4175,"total_tokens":4175,"cost":0.04}""",
+            Usage::class.java,
+        )
+
+        assertEquals(0.04, usage.cost)
+        assertEquals(4175, usage.completionTokens)
+    }
+
+    @Test
+    fun `cost is null when the response omits it`() {
+        val usage = objectMapper.readValue(
+            """{"prompt_tokens":7,"completion_tokens":1}""",
+            Usage::class.java,
+        )
+
+        assertNull(usage.cost)
+    }
 }
