@@ -11,9 +11,11 @@ import org.junit.jupiter.api.Timeout
 import java.util.concurrent.TimeUnit
 import org.springframework.web.client.HttpClientErrorException
 import tools.jackson.module.kotlin.jacksonObjectMapper
+import java.awt.image.BufferedImage
+import java.io.ByteArrayOutputStream
 import java.io.File
-import java.util.Base64
 import java.util.UUID
+import javax.imageio.ImageIO
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
@@ -270,10 +272,15 @@ class OpenRouterIntegrationTest {
             .get(model)?.inputModalities?.contains("image") == true
         assumeTrue(supportsImageInput, "model '$model' does not advertise image input; skipping the vision check")
 
-        // A single solid-red 2x2 PNG, built at test time rather than checked in as a fixture.
-        val redPixelPng = Base64.getDecoder().decode(
-            "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEklEQVR4nGP8z8DAwMDAAAAqAgN9tmZ9tQAAAABJRU5ErkJggg==",
-        )
+        // A single solid-red 2x2 PNG, encoded at test time via ImageIO rather than a hand-typed
+        // base64 literal — a single wrong character there decodes to bytes that look plausible but
+        // are not a valid PNG, which OpenRouter/the provider then rejects with 400 Bad Request.
+        val redPixelPng = ByteArrayOutputStream().use { out ->
+            val image = BufferedImage(2, 2, BufferedImage.TYPE_INT_RGB)
+            image.setRGB(0, 0, 2, 2, IntArray(4) { 0xFF0000 }, 0, 2)
+            ImageIO.write(image, "png", out)
+            out.toByteArray()
+        }
         val request = ChatRequest(
             model = model,
             messages = listOf(
