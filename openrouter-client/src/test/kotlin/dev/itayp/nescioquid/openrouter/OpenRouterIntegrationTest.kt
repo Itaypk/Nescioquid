@@ -305,7 +305,7 @@ class OpenRouterIntegrationTest {
 
         val response = skippingRateLimits {
             imageClient().generate(
-                ImageRequest(model = imageModel, prompt = "a single small red circle on a white background"),
+                ImageRequest(model = imageModel, prompt = "a single small green circle on a white background"),
                 context(),
             )
         }
