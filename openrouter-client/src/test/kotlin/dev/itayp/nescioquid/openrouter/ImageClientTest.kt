@@ -96,10 +96,10 @@ class ImageClientTest {
         // Only what was actually set, plus the provider object every request carries.
         assertEquals(
             setOf("model", "prompt", "provider"),
-            body!!.propertyNames().asSequence().toSet(),
+            body!!.propertyNames().toSet(),
         )
         // ...and provider itself carries only zdr, so the routing fields stay off the wire too.
-        assertEquals(setOf("zdr"), body!!.get("provider").propertyNames().asSequence().toSet())
+        assertEquals(setOf("zdr"), body.get("provider").propertyNames().asSequence().toSet())
     }
 
     @Test

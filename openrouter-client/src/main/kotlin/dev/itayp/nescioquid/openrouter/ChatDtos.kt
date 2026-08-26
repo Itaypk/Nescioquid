@@ -35,7 +35,46 @@ data class ChatRequest(
     // streamed call could not report token counts to the AiCallListener.
     @JsonInclude(JsonInclude.Include.NON_NULL)
     val usage: UsageConfig? = null,
+    // Request-level plugins (OpenRouter `plugins` field). Today the only one this client models is
+    // `file-parser`, which governs how `ContentPart.File` (PDF) attachments in `messages` are parsed
+    // — build one with `PluginConfig.pdfEngine`. Omitted from the wire when null, so a request that
+    // attaches a PDF without setting this gets OpenRouter's default engine selection.
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    val plugins: List<PluginConfig>? = null,
 ) : AiRequest
+
+/**
+ * An OpenRouter request-level plugin. Modeled narrowly for the one case the chat path needs today:
+ * selecting the PDF-parsing engine `file-parser` uses for [ContentPart.File] attachments.
+ */
+data class PluginConfig(
+    val id: String,
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    val pdf: PdfPluginConfig? = null,
+) {
+    companion object {
+        /**
+         * Selects the PDF-parsing engine [file-parser] uses for [ContentPart.File] attachments — see
+         * [PdfEngine] for the legal [engine] values. Omitting this plugin entirely leaves OpenRouter's
+         * own default: the model's native file support when it has one, else `mistral-ocr`.
+         */
+        fun pdfEngine(engine: String): PluginConfig = PluginConfig(id = "file-parser", pdf = PdfPluginConfig(engine))
+    }
+}
+
+data class PdfPluginConfig(val engine: String)
+
+/** Legal values for [PdfPluginConfig.engine]. */
+object PdfEngine {
+    /** OCR, best for scanned documents or PDFs containing images. $2 per 1,000 pages. */
+    const val MISTRAL_OCR = "mistral-ocr"
+
+    /** Converts the PDF to markdown via Cloudflare Workers AI. Free. */
+    const val CLOUDFLARE_AI = "cloudflare-ai"
+
+    /** The target model's own native file understanding, billed as input tokens. Only for models that have it. */
+    const val NATIVE = "native"
+}
 
 /** OpenRouter `usage` request field. `include = true` asks for token accounting in the response. */
 data class UsageConfig(

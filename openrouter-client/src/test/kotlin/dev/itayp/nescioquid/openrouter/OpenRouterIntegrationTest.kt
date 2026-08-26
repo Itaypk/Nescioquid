@@ -11,8 +11,11 @@ import org.junit.jupiter.api.Timeout
 import java.util.concurrent.TimeUnit
 import org.springframework.web.client.HttpClientErrorException
 import tools.jackson.module.kotlin.jacksonObjectMapper
+import java.awt.image.BufferedImage
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.util.UUID
+import javax.imageio.ImageIO
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
@@ -257,12 +260,52 @@ class OpenRouterIntegrationTest {
     }
 
     @Test
+    fun `sends an image content part and gets a description grounded in it back`() {
+        assumeTrue(apiKey != null, "OPENROUTER_API_KEY not set; skipping live OpenRouter test")
+        val properties = AiClientProperties(
+            apiKey = requireNotNull(apiKey),
+            baseUrl = "https://openrouter.ai/api/v1",
+            configuredModels = setOf(model),
+        )
+        val supportsImageInput = ModelCapabilityService(properties)
+            .apply { prefetch() }
+            .get(model)?.inputModalities?.contains("image") == true
+        assumeTrue(supportsImageInput, "model '$model' does not advertise image input; skipping the vision check")
+
+        // A single solid-red 2x2 PNG, encoded at test time via ImageIO rather than a hand-typed
+        // base64 literal — a single wrong character there decodes to bytes that look plausible but
+        // are not a valid PNG, which OpenRouter/the provider then rejects with 400 Bad Request.
+        val redPixelPng = ByteArrayOutputStream().use { out ->
+            val image = BufferedImage(2, 2, BufferedImage.TYPE_INT_RGB)
+            image.setRGB(0, 0, 2, 2, IntArray(4) { 0xFF0000 }, 0, 2)
+            ImageIO.write(image, "png", out)
+            out.toByteArray()
+        }
+        val request = ChatRequest(
+            model = model,
+            messages = listOf(
+                ChatMessage.withAttachments(
+                    role = "user",
+                    text = "What color is this image? Reply with one word.",
+                    attachments = listOf(ContentPart.ImageUrl.ofBytes(redPixelPng, mediaType = "image/png")),
+                ),
+            ),
+            provider = ProviderPreferences(zdr = false), // see the structured-output test above
+        )
+
+        val response = skippingRateLimits { aiClient().chat(request, context()) }
+        val content = response.choices.first().message.contentText
+        assertNotNull(content, "expected string content in the response")
+        assertTrue(content.contains("red", ignoreCase = true), "expected the model to describe the image as red, got '$content'")
+    }
+
+    @Test
     fun `generates a real image through the dedicated images endpoint`() {
         assumeTrue(apiKey != null, "OPENROUTER_API_KEY not set; skipping live OpenRouter test")
 
         val response = skippingRateLimits {
             imageClient().generate(
-                ImageRequest(model = imageModel, prompt = "a single small red circle on a white background"),
+                ImageRequest(model = imageModel, prompt = "a single small green circle on a white background"),
                 context(),
             )
         }
