@@ -12,6 +12,7 @@ import java.util.concurrent.TimeUnit
 import org.springframework.web.client.HttpClientErrorException
 import tools.jackson.module.kotlin.jacksonObjectMapper
 import java.io.File
+import java.util.Base64
 import java.util.UUID
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -254,6 +255,41 @@ class OpenRouterIntegrationTest {
 
         val completed = events.last() as ChatStreamEvent.Completed
         assertEquals(listOf(call), completed.response.choices.first().message.toolCalls)
+    }
+
+    @Test
+    fun `sends an image content part and gets a description grounded in it back`() {
+        assumeTrue(apiKey != null, "OPENROUTER_API_KEY not set; skipping live OpenRouter test")
+        val properties = AiClientProperties(
+            apiKey = requireNotNull(apiKey),
+            baseUrl = "https://openrouter.ai/api/v1",
+            configuredModels = setOf(model),
+        )
+        val supportsImageInput = ModelCapabilityService(properties)
+            .apply { prefetch() }
+            .get(model)?.inputModalities?.contains("image") == true
+        assumeTrue(supportsImageInput, "model '$model' does not advertise image input; skipping the vision check")
+
+        // A single solid-red 2x2 PNG, built at test time rather than checked in as a fixture.
+        val redPixelPng = Base64.getDecoder().decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEklEQVR4nGP8z8DAwMDAAAAqAgN9tmZ9tQAAAABJRU5ErkJggg==",
+        )
+        val request = ChatRequest(
+            model = model,
+            messages = listOf(
+                ChatMessage.withAttachments(
+                    role = "user",
+                    text = "What color is this image? Reply with one word.",
+                    attachments = listOf(ContentPart.ImageUrl.ofBytes(redPixelPng, mediaType = "image/png")),
+                ),
+            ),
+            provider = ProviderPreferences(zdr = false), // see the structured-output test above
+        )
+
+        val response = skippingRateLimits { aiClient().chat(request, context()) }
+        val content = response.choices.first().message.contentText
+        assertNotNull(content, "expected string content in the response")
+        assertTrue(content.contains("red", ignoreCase = true), "expected the model to describe the image as red, got '$content'")
     }
 
     @Test

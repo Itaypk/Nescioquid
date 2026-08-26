@@ -14,7 +14,7 @@ Consumers are expected to be **Spring Boot apps** (the client uses `RestClient` 
 | `AiClient` | Chat completions. `chat(request, context)` is the blocking call; `chatStream(request, context)` is the streaming counterpart, returning a cold `Flow<ChatStreamEvent>`. The `request` is the source of truth for the wire, including `reasoning`. |
 | `ImageClient` | Image generation via the dedicated `POST /images` endpoint. `generate(request, context)`, accounted exactly as a chat call is. |
 | `AiCall.kt` | `AiRequest` / `AiResponse` — the modality-agnostic supertypes the seams are written against. |
-| `ChatDtos.kt` / `MessageContent.kt` | Chat DTOs — `ChatRequest`/`ChatResponse`, the string↔parts `MessageContent` union, prompt-caching `cache_control`, `ReasoningConfig`. Jackson-only. |
+| `ChatDtos.kt` / `MessageContent.kt` | Chat DTOs — `ChatRequest`/`ChatResponse`, the string↔parts `MessageContent` union, `ContentPart` (text/image/file/audio input), `PluginConfig`/`PdfEngine`, prompt-caching `cache_control`, `ReasoningConfig`. Jackson-only. |
 | `ImageDtos.kt` | `ImageRequest` (`n`, `resolution`, `aspect_ratio`, `quality`, `output_format`, `seed`, `input_references`, …), `ImageResponse`, and `ImageData` with `bytes` / `dataUrl` accessors. |
 | `Usage.kt` | `Usage` / `PromptTokensDetails` — token counts, prompt-cache breakdown, and `cost`. Shared by every endpoint. |
 | `ProviderPreferences.kt` | The provider-routing object (`zdr`, `only`, `order`, `ignore`, `sort`, `allow_fallbacks`), accepted identically by every endpoint. |
@@ -133,6 +133,59 @@ Notes:
   for abandoned generations at your own cancellation point. Cancellation takes effect at the next
   event or keepalive, since a read already parked in the socket is not interrupted.
 - The flow runs on `Dispatchers.IO` (the reads are blocking) and hands events over without buffering.
+
+## Multimodal input
+
+A chat message's content can carry more than text — images, PDFs, and audio can be attached to a
+user message for models that accept them (this is the *receiving* side; for a model *generating*
+images, see [Image generation](#image-generation) below). Each attachment is one `ContentPart`:
+
+```kotlin
+val message = ChatMessage.withAttachments(
+    role = "user",
+    text = "What's in this image?",                          // optional — omit for attachment-only messages
+    attachments = listOf(ContentPart.ImageUrl.of("https://example.com/cat.png")),
+)
+
+val response = aiClient.chat(
+    ChatRequest(model = "openai/gpt-4o", messages = listOf(message)),
+    AiCallContext(userId = userId, conversationType = "chat"),
+)
+```
+
+`ContentPart` has one variant per modality, each a thin wrapper over the exact OpenRouter wire shape:
+
+- **`ContentPart.ImageUrl`** — `ContentPart.ImageUrl.of(url)` for a plain `https://` URL, or
+  `ContentPart.ImageUrl.ofBytes(bytes, mediaType)` to embed local bytes as a base64 `data:` URL.
+- **`ContentPart.File`** — PDFs. `ContentPart.File.of(filename, url)` or
+  `ContentPart.File.ofBytes(filename, bytes, mediaType)`, same URL-or-`data:` choice as images.
+  OpenRouter parses it server-side: natively for models with native file support, otherwise via the
+  `file-parser` plugin — pick the parsing engine with `ChatRequest.plugins`:
+  ```kotlin
+  ChatRequest(
+      model = "...",
+      messages = listOf(message),
+      plugins = listOf(PluginConfig.pdfEngine(PdfEngine.MISTRAL_OCR)), // OCR; also CLOUDFLARE_AI (free) / NATIVE
+  )
+  ```
+  Leaving `plugins` unset lets OpenRouter pick — the model's native file support if it has one, else
+  `mistral-ocr`.
+- **`ContentPart.InputAudio`** — voice/audio. `ContentPart.InputAudio.ofBytes(bytes, format)` only;
+  unlike images and files, OpenRouter does not accept a URL for audio, so there is no `of(url)`.
+  `format` is the codec/container (`wav`, `mp3`, `aac`, `ogg`, `flac`, `m4a`, `aiff`, `pcm16`,
+  `pcm24`, …) — check the target model's docs for which it accepts.
+
+`ChatMessage.withAttachments` puts `text` first when given (matching where a human would type it) and
+appends `attachments` after; build `MessageContent.Parts(...)` directly if you need a different order
+or a bare-attachment message with several parts interleaved with text.
+
+**Check capability before attaching.** OpenRouter rejects a modality the target model doesn't accept
+rather than ignoring it — confirm with `ModelCapabilityService.get(model)?.inputModalities` (e.g.
+`?.contains("image")`) before building the attachment. This client does not check for you.
+
+Video is not modeled — OpenRouter's `video_url` part support varies a lot by provider (Gemini on AI
+Studio only takes YouTube links, for instance), and it wasn't a priority. Add a `ContentPart.VideoUrl`
+variant the same way as the others above if you need it.
 
 ## Image generation
 
@@ -267,7 +320,7 @@ before pointing `OPENROUTER_IMAGE_TEST_MODEL` elsewhere or wiring a key into CI.
 ## Coordinates
 
 ```kotlin
-implementation("com.github.Itaypk.Nescioquid:openrouter-client:0.9.0")
+implementation("com.github.Itaypk.Nescioquid:openrouter-client:0.10.0")
 ```
 
 Requires JVM 25+ and a Spring Boot 4.x runtime. Apache-2.0.
