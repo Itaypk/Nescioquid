@@ -272,12 +272,15 @@ class OpenRouterIntegrationTest {
             .get(model)?.inputModalities?.contains("image") == true
         assumeTrue(supportsImageInput, "model '$model' does not advertise image input; skipping the vision check")
 
-        // A single solid-red 2x2 PNG, encoded at test time via ImageIO rather than a hand-typed
+        // A single solid-green 2x2 PNG, encoded at test time via ImageIO rather than a hand-typed
         // base64 literal — a single wrong character there decodes to bytes that look plausible but
         // are not a valid PNG, which OpenRouter/the provider then rejects with 400 Bad Request.
-        val redPixelPng = ByteArrayOutputStream().use { out ->
+        // Green rather than red: some providers' vision safety classifiers rarely flag a solid red
+        // image as violence/blood, which makes the model hedge or refuse instead of naming the color
+        // (see the same red->green swap on the image-generation test below).
+        val greenPixelPng = ByteArrayOutputStream().use { out ->
             val image = BufferedImage(2, 2, BufferedImage.TYPE_INT_RGB)
-            image.setRGB(0, 0, 2, 2, IntArray(4) { 0xFF0000 }, 0, 2)
+            image.setRGB(0, 0, 2, 2, IntArray(4) { 0x00FF00 }, 0, 2)
             ImageIO.write(image, "png", out)
             out.toByteArray()
         }
@@ -287,7 +290,7 @@ class OpenRouterIntegrationTest {
                 ChatMessage.withAttachments(
                     role = "user",
                     text = "What color is this image? Reply with one word.",
-                    attachments = listOf(ContentPart.ImageUrl.ofBytes(redPixelPng, mediaType = "image/png")),
+                    attachments = listOf(ContentPart.ImageUrl.ofBytes(greenPixelPng, mediaType = "image/png")),
                 ),
             ),
             provider = ProviderPreferences(zdr = false), // see the structured-output test above
@@ -296,7 +299,7 @@ class OpenRouterIntegrationTest {
         val response = skippingRateLimits { aiClient().chat(request, context()) }
         val content = response.choices.first().message.contentText
         assertNotNull(content, "expected string content in the response")
-        assertTrue(content.contains("red", ignoreCase = true), "expected the model to describe the image as red, got '$content'")
+        assertTrue(content.contains("green", ignoreCase = true), "expected the model to describe the image as green, got '$content'")
     }
 
     @Test
