@@ -94,10 +94,10 @@ internal inline fun <T> retrying(
  * The shared OpenRouter transport: connection setup, the retry policy, and the [AiCallGate] /
  * [AiCallListener] seams that make a call an *accounted* call.
  *
- * One bean serves every modality client ([AiClient], [ImageClient], and whatever `/videos` or
- * `/embeddings` clients follow), so they share connection pools and — more importantly — a single
- * definition of what "one accounted call" means. A modality client is then just the endpoint path
- * plus its own DTOs.
+ * One bean serves every modality client ([AiClient], [ImageClient], [TranscriptionClient], and
+ * whatever `/videos` or `/embeddings` clients follow), so they share connection pools and — more
+ * importantly — a single definition of what "one accounted call" means. A modality client is then
+ * just the endpoint path plus its own DTOs.
  */
 @Component
 class OpenRouterTransport(
@@ -118,6 +118,14 @@ class OpenRouterTransport(
         client
     } else {
         openRouterRestClient(properties, null, properties.imageReadTimeout)
+    }
+
+    // Same reasoning as imageClient: transcription gets its own timeout budget rather than sharing
+    // the chat read timeout.
+    private val transcriptionClient = if (restClientBuilder != null) {
+        client
+    } else {
+        openRouterRestClient(properties, null, properties.transcriptionReadTimeout)
     }
 
     /**
@@ -213,7 +221,11 @@ class OpenRouterTransport(
     fun recordFailure(context: AiCallContext, request: AiRequest) =
         callListener.recordFailure(context, request)
 
-    private fun clientFor(path: String) = if (path == IMAGES_PATH) imageClient else client
+    private fun clientFor(path: String) = when (path) {
+        IMAGES_PATH -> imageClient
+        AUDIO_TRANSCRIPTIONS_PATH -> transcriptionClient
+        else -> client
+    }
 
     private fun statusOf(e: RuntimeException) = when (e) {
         is HttpClientErrorException -> e.statusCode.toString()
@@ -234,3 +246,4 @@ class OpenRouterTransport(
 
 internal const val COMPLETIONS_PATH = "/chat/completions"
 internal const val IMAGES_PATH = "/images"
+internal const val AUDIO_TRANSCRIPTIONS_PATH = "/audio/transcriptions"

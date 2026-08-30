@@ -6,6 +6,7 @@ import org.springframework.web.client.RestClient
 const val TEST_BASE_URL = "https://openrouter.ai/api/v1"
 const val COMPLETIONS_URL = "$TEST_BASE_URL/chat/completions"
 const val IMAGES_URL = "$TEST_BASE_URL/images"
+const val TRANSCRIPTIONS_URL = "$TEST_BASE_URL/audio/transcriptions"
 
 val testContext = AiCallContext(userId = "00000000-0000-0000-0000-000000000001", conversationType = "test")
 
@@ -16,6 +17,9 @@ fun testRequest(model: String = "openai/gpt-oss-20b:free") =
 
 fun testImageRequest(model: String = "bytedance-seed/seedream-4.5") =
     ImageRequest(model = model, prompt = "a red panda astronaut")
+
+fun testTranscriptionRequest(model: String = "openai/whisper-large-v3") =
+    TranscriptionRequest.ofBytes(model = model, bytes = byteArrayOf(1, 2, 3, 4), format = "wav")
 
 /** Records gate invocations so tests can assert *when* the pre-call check runs, not just that it did. */
 class RecordingGate(private val onCall: (AiCallContext, AiRequest) -> Unit = { _, _ -> }) : AiCallGate {
@@ -37,6 +41,8 @@ class RecordingListener : AiCallListener {
     val chatSuccesses: List<ChatResponse> get() = successes.filterIsInstance<ChatResponse>()
 
     val imageSuccesses: List<ImageResponse> get() = successes.filterIsInstance<ImageResponse>()
+
+    val transcriptionSuccesses: List<TranscriptionResponse> get() = successes.filterIsInstance<TranscriptionResponse>()
 
     override fun recordSuccess(context: AiCallContext, request: AiRequest, response: AiResponse) {
         successes += response
@@ -61,7 +67,14 @@ class TestImageClient(
     val listener: RecordingListener,
 )
 
-/** A transport bound to a [MockRestServiceServer], which all three of its clients then share. */
+class TestTranscriptionClient(
+    val client: TranscriptionClient,
+    val server: MockRestServiceServer,
+    val gate: RecordingGate,
+    val listener: RecordingListener,
+)
+
+/** A transport bound to a [MockRestServiceServer], which all four of its clients then share. */
 private fun testTransport(gate: RecordingGate, listener: RecordingListener): Pair<OpenRouterTransport, MockRestServiceServer> {
     val builder = RestClient.builder()
     val server = MockRestServiceServer.bindTo(builder).build()
@@ -79,4 +92,12 @@ fun testImageClient(
 ): TestImageClient {
     val (transport, server) = testTransport(gate, listener)
     return TestImageClient(ImageClient(transport), server, gate, listener)
+}
+
+fun testTranscriptionClient(
+    gate: RecordingGate = RecordingGate(),
+    listener: RecordingListener = RecordingListener(),
+): TestTranscriptionClient {
+    val (transport, server) = testTransport(gate, listener)
+    return TestTranscriptionClient(TranscriptionClient(transport), server, gate, listener)
 }

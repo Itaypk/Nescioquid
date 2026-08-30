@@ -12,7 +12,7 @@ exactly what I already need, not general-purpose flexibility) and permissively l
 | Module | Coordinates (JitPack) | What it is |
 | --- | --- | --- |
 | [`envelope-crypto`](envelope-crypto/) | `com.github.Itaypk.Nescioquid:envelope-crypto:<tag>` | Versioned AES-256-GCM plus per-entity DEK-under-KEK envelope encryption with AAD binding. Pure JDK — zero runtime dependencies. |
-| [`openrouter-client`](openrouter-client/) | `com.github.Itaypk.Nescioquid:openrouter-client:<tag>` | A minimal, Spring-native [OpenRouter](https://openrouter.ai) chat client: request/response DTOs, a retrying transport, model-capability fetching, reasoning-effort resolution, and a small function-tool abstraction. |
+| [`openrouter-client`](openrouter-client/) | `com.github.Itaypk.Nescioquid:openrouter-client:<tag>` | A minimal, Spring-native [OpenRouter](https://openrouter.ai) client for chat, image generation, and speech-to-text: request/response DTOs, a retrying transport, model-capability fetching, reasoning-effort resolution, and a small function-tool abstraction. |
 
 The two modules are unrelated and version together only because they live in one repo; depend on
 whichever you need.

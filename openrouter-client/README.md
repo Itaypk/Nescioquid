@@ -1,8 +1,9 @@
 # openrouter-client
 
 A minimal, Spring-native client for the [OpenRouter](https://openrouter.ai) API — chat completions
-(blocking and streaming) and image generation. Deliberately narrow: request/response DTOs, a retrying
-transport, model-capability fetching, and a small function-tool abstraction — no framework of its own.
+(blocking and streaming), image generation, and speech-to-text transcription. Deliberately narrow:
+request/response DTOs, a retrying transport, model-capability fetching, and a small function-tool
+abstraction — no framework of its own.
 
 Consumers are expected to be **Spring Boot apps** (the client uses `RestClient` and component beans).
 
@@ -13,10 +14,12 @@ Consumers are expected to be **Spring Boot apps** (the client uses `RestClient` 
 | `OpenRouterTransport` | The shared transport: bearer auth, timeouts, 3-attempt exponential backoff on 5xx/429, and the gate/listener seams that make a call an *accounted* call. Every modality client delegates to it, so they share connection pools and one definition of "one call". |
 | `AiClient` | Chat completions. `chat(request, context)` is the blocking call; `chatStream(request, context)` is the streaming counterpart, returning a cold `Flow<ChatStreamEvent>`. The `request` is the source of truth for the wire, including `reasoning`. |
 | `ImageClient` | Image generation via the dedicated `POST /images` endpoint. `generate(request, context)`, accounted exactly as a chat call is. |
-| `AiCall.kt` | `AiRequest` / `AiResponse` — the modality-agnostic supertypes the seams are written against. |
+| `TranscriptionClient` | Speech-to-text via the dedicated `POST /audio/transcriptions` endpoint. `transcribe(request, context)`, accounted exactly as a chat call is. |
+| `AiCall.kt` | `AiRequest` / `AiResponse` / `CallUsage` — the modality-agnostic supertypes the seams are written against. |
 | `ChatDtos.kt` / `MessageContent.kt` | Chat DTOs — `ChatRequest`/`ChatResponse`, the string↔parts `MessageContent` union, `ContentPart` (text/image/file/audio input), `PluginConfig`/`PdfEngine`, prompt-caching `cache_control`, `ReasoningConfig`. Jackson-only. |
 | `ImageDtos.kt` | `ImageRequest` (`n`, `resolution`, `aspect_ratio`, `quality`, `output_format`, `seed`, `input_references`, …), `ImageResponse`, and `ImageData` with `bytes` / `dataUrl` accessors. |
-| `Usage.kt` | `Usage` / `PromptTokensDetails` — token counts, prompt-cache breakdown, and `cost`. Shared by every endpoint. |
+| `TranscriptionDtos.kt` | `TranscriptionRequest` (`input_audio`, `language`, `temperature`) with an `ofBytes` builder, `TranscriptionResponse`, and `TranscriptionUsage` (duration/token counts, `cost`). |
+| `Usage.kt` | `Usage` / `PromptTokensDetails` — token counts, prompt-cache breakdown, and `cost`, implementing `CallUsage`. Shared by the chat and image endpoints. |
 | `ProviderPreferences.kt` | The provider-routing object (`zdr`, `only`, `order`, `ignore`, `sort`, `allow_fallbacks`), accepted identically by every endpoint. |
 | `AiStreamEvents.kt` | `ChatStreamEvent` — the `ContentDelta` / `ReasoningDelta` / `ToolCallReady` / `Completed` union a `chatStream` collector sees — and `OpenRouterStreamException`. |
 | `AiStreamDtos.kt` | The SSE chunk/delta wire shapes. Internal plumbing for `chatStream`; you work with `ChatStreamEvent` instead. |
@@ -41,7 +44,7 @@ Spring beans:
 
 Both are written against the **modality-agnostic** `AiRequest` / `AiResponse` supertypes, so one
 implementation of each covers every endpoint the client speaks. `AiResponse` exposes the `model`,
-`provider` and `Usage` (including `cost`) every response carries; narrow with a `when` for anything
+`provider` and `CallUsage` (including `cost`) every response carries; narrow with a `when` for anything
 more specific — which a budget gate usually wants to, since an image generation costs a great deal
 more than a text completion:
 
@@ -51,6 +54,7 @@ fun aiCallGate(): AiCallGate = AiCallGate { ctx, request ->
     when (request) {
         is ChatRequest -> myLimiter.checkTokens(ctx.userId)
         is ImageRequest -> myLimiter.checkImageBudget(ctx.userId, request.n ?: 1)
+        is TranscriptionRequest -> myLimiter.checkVoiceBudget(ctx.userId)
     }
 }
 ```
@@ -249,6 +253,50 @@ and leaves the cache as it was rather than breaking boot.
 
 For chat models that emit images *inline* in a completion — a different thing from an `/images`
 model — `ModelCapabilityService.supportsImageOutput(model)` reads `architecture.output_modalities`.
+
+## Speech-to-text (transcription)
+
+Like image generation, transcription is its own OpenRouter endpoint (`POST /audio/transcriptions`),
+not a chat call with an audio attachment — so it has its own client and its own DTOs. Everything else
+is the same: the gate runs first, the listener records the outcome, and 5xx/429 get the same
+3-attempt backoff.
+
+This is the path for giving voice input to a model that doesn't accept audio as chat input at all:
+transcribe the recording here first, then send the resulting text as an ordinary `ChatMessage`. A
+model that *does* accept `ContentPart.InputAudio` directly (see
+[Multimodal input](#multimodal-input) above) doesn't need this — attach the audio to the chat message
+instead, unless a dedicated transcription model is preferred for cost or accuracy regardless.
+
+```kotlin
+val response = transcriptionClient.transcribe(
+    TranscriptionRequest.ofBytes(model = "openai/whisper-large-v3", bytes = audioBytes, format = "wav"),
+    AiCallContext(userId = userId, conversationType = "voice-input"),
+)
+
+val transcript = response.text
+```
+
+Notes:
+
+- **`TranscriptionRequest.ofBytes`** base64-encodes the audio for you — the same `data`/`format` shape
+  chat's `ContentPart.InputAudio.ofBytes` uses, since OpenRouter takes raw base64 bytes for audio on
+  every endpoint, never a URL.
+- **`language`** (ISO-639-1, e.g. `"en"`) is an optional hint; omitted, the model auto-detects.
+  **`temperature`** (0–1) trades determinism for the model's default sampling.
+- **Usage is duration-based, not token-based.** `TranscriptionResponse.usage` is a `TranscriptionUsage`
+  — `seconds`, `inputTokens`/`outputTokens`/`totalTokens` where the provider reports them, and `cost`
+  — a different shape from chat/image's `Usage`, because OpenRouter bills transcription primarily by
+  audio duration. Both implement the shared `CallUsage` (`cost` only) for a gate that just needs to
+  compare against a budget regardless of endpoint.
+- **No id, model, or provider echoed.** Unlike `/chat/completions` and `/images`, the transcription
+  endpoint's response carries only `text` and `usage` — `TranscriptionResponse.model`/`.provider` exist
+  for interface parity with `AiResponse` but stay `null` in practice.
+- **Multipart form-data and `verbose_json` aren't modeled.** OpenRouter also accepts this endpoint as
+  multipart form-data (for OpenAI-SDK compatibility) and a `response_format: verbose_json` mode for
+  segment/word-level timestamps — available only on OpenAI-compatible upstream providers. Neither is
+  implemented here; this client only ever needs the plain transcript text.
+- **Blocking**, and runs against its own `AiClientProperties.transcriptionReadTimeout` (120s by
+  default) rather than the chat read timeout, since a long recording can take a while to transcribe.
 
 ## Structured outputs & DTO-driven schemas
 
