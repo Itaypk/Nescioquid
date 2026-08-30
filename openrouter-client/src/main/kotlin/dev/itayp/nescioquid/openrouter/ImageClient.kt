@@ -6,10 +6,10 @@ import org.springframework.stereotype.Component
  * The image-generation client, speaking OpenRouter's dedicated `POST /images` endpoint.
  *
  * Kept separate from [AiClient] rather than added to it: `/images` is its own endpoint with its own
- * request and response shapes, and the modality endpoints still to come (`/videos`, `/embeddings`,
- * `/audio/speech`) are each another one. Everything the two clients genuinely share — auth, timeouts, the
- * retry policy, and the gate/listener seams — lives in [OpenRouterTransport], so a call here is
- * accounted exactly as a chat call is.
+ * request and response shapes, same as [TranscriptionClient]'s `/audio/transcriptions`, and the
+ * modality endpoints still to come (`/videos`, `/embeddings`, `/audio/speech`) are each another one.
+ * Everything the clients genuinely share — auth, timeouts, the retry policy, and the gate/listener
+ * seams — lives in [OpenRouterTransport], so a call here is accounted exactly as a chat call is.
  *
  * Which parameters a given model accepts, and their legal values, are reported per model by
  * [ImageModelCapabilityService]; OpenRouter rejects an unsupported parameter rather than ignoring it.

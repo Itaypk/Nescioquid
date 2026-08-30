@@ -6,8 +6,8 @@ package dev.itayp.nescioquid.openrouter
  * metrics; the consumer wires its own implementation as a bean.
  *
  * Both parameters are the modality-agnostic supertypes, so one implementation covers every endpoint
- * the client speaks. [AiResponse] exposes the model, provider and [Usage] every response carries;
- * narrow to [ChatResponse] / [ImageResponse] for anything beyond that.
+ * the client speaks. [AiResponse] exposes the model, provider and [CallUsage] every response carries;
+ * narrow to [ChatResponse] / [ImageResponse] / [TranscriptionResponse] for anything beyond that.
  *
  * Implementations must be best-effort — accounting must never break the AI call.
  */

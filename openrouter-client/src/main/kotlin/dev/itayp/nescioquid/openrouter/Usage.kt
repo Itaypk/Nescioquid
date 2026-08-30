@@ -15,8 +15,8 @@ data class Usage(
     @JsonProperty("prompt_tokens_details") val promptTokensDetails: PromptTokensDetails? = null,
     // Cost of the call in USD. Reported by `/images` always, and by `/chat/completions` whenever the
     // request asked for usage accounting (`usage.include`) — which `AiClient.chatStream` always does.
-    val cost: Double? = null,
-)
+    override val cost: Double? = null,
+) : CallUsage
 
 // Sub-breakdown of the prompt tokens, primarily for prompt caching. Every field is nullable
 // because providers populate different subsets (and OpenRouter omits the object entirely when

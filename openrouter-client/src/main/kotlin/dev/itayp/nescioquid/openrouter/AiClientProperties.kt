@@ -38,4 +38,13 @@ data class AiClientProperties(
      * it would leave a hung *chat* call sitting on the socket for minutes.
      */
     val imageReadTimeout: Duration = Duration.ofSeconds(180),
+    /**
+     * Max time a socket read may block on a [TranscriptionClient.transcribe] call.
+     *
+     * Separate from [readTimeout] for the same reason [imageReadTimeout] is: transcribing a long
+     * recording (up to the endpoint's upload size limit) can run well past a text completion's
+     * budget, and raising [readTimeout] to suit it would leave a hung *chat* call sitting on the
+     * socket for minutes.
+     */
+    val transcriptionReadTimeout: Duration = Duration.ofSeconds(120),
 )
