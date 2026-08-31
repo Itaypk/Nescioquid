@@ -10,6 +10,19 @@ the consuming app's concern, since those are shaped by whatever identity model t
 Consumers are expected to be **Spring Boot apps** (the client uses `RestClient`, Spring Security's
 `JwtDecoder`, and component beans).
 
+**Runtime requirement, not a compile-time one:** the token exchange decodes a JSON body via
+`RestClient`, which needs *some* JSON `HttpMessageConverter` on the classpath at runtime (Jackson —
+either the Jackson 3 `tools.jackson` this module targets, or legacy Jackson 2 — Gson, and JSON-B all
+work equally well here, since the response is decoded into a plain `Map`). This module declares
+Jackson `compileOnly` rather than `implementation`, on the assumption that any real consumer already
+has one: an OIDC browser-redirect login needs an HTTP endpoint to receive the callback, so the
+consumer necessarily runs `spring-boot-starter-web` or `-webflux`, both of which pull in
+`spring-boot-starter-json` (Jackson) by default. The gap is a Spring Boot app that has deliberately
+excluded its default JSON support in favor of something `RestClient` can't autodetect — in that
+case, `completeAuthorization` fails at the first real login attempt with "no suitable
+HttpMessageConverter found", not at build time. If that's your setup, add a JSON converter
+dependency yourself (e.g. `implementation("tools.jackson.module:jackson-module-kotlin")`).
+
 ## What's in it
 
 | Class | Role |
