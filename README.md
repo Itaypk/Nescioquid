@@ -13,8 +13,9 @@ exactly what I already need, not general-purpose flexibility) and permissively l
 | --- | --- | --- |
 | [`envelope-crypto`](envelope-crypto/) | `com.github.Itaypk.Nescioquid:envelope-crypto:<tag>` | Versioned AES-256-GCM plus per-entity DEK-under-KEK envelope encryption with AAD binding. Pure JDK — zero runtime dependencies. |
 | [`openrouter-client`](openrouter-client/) | `com.github.Itaypk.Nescioquid:openrouter-client:<tag>` | A minimal, Spring-native [OpenRouter](https://openrouter.ai) client for chat, image generation, and speech-to-text: request/response DTOs, a retrying transport, model-capability fetching, reasoning-effort resolution, and a small function-tool abstraction. |
+| [`telegram-oidc-login`](telegram-oidc-login/) | `com.github.Itaypk.Nescioquid:telegram-oidc-login:<tag>` | Telegram login via the OIDC Authorization Code + PKCE flow: builds the authorization redirect, exchanges the code, and validates the returned id_token against Telegram's JWKS. Verification only — session creation and account linking stay app-specific. |
 
-The two modules are unrelated and version together only because they live in one repo; depend on
+The modules are unrelated and version together only because they live in one repo; depend on
 whichever you need.
 
 ## Using it (JitPack)
@@ -30,6 +31,7 @@ repositories {
 dependencies {
     implementation("com.github.Itaypk.Nescioquid:envelope-crypto:0.8.0")
     implementation("com.github.Itaypk.Nescioquid:openrouter-client:0.8.0")
+    implementation("com.github.Itaypk.Nescioquid:telegram-oidc-login:0.8.0")
 }
 ```
 
@@ -38,14 +40,14 @@ module on first request.
 
 ### JVM 25 required
 
-Both modules target the **JVM 25 toolchain**. JitPack must therefore build on JDK 25 (configured in
+All modules target the **JVM 25 toolchain**. JitPack must therefore build on JDK 25 (configured in
 [`jitpack.yml`](jitpack.yml)), and consumers must run on JDK 25+. This is a hard requirement, not a
 minimum — the artifacts are compiled for 25.
 
 ## Building locally
 
 ```bash
-./gradlew build            # compile + test both modules
+./gradlew build            # compile + test every module
 ./gradlew :envelope-crypto:test
 ./gradlew publishToMavenLocal   # install to ~/.m2 for local consumption
 ```

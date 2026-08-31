@@ -8,3 +8,4 @@ rootProject.name = "nescioquid"
 
 include("envelope-crypto")
 include("openrouter-client")
+include("telegram-oidc-login")
