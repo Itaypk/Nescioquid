@@ -83,7 +83,7 @@ a bot session or long-polls updates.
 ## Coordinates
 
 ```kotlin
-implementation("com.github.Itaypk.Nescioquid:telegram-oidc-login:0.11.0")
+implementation("com.github.Itaypk.Nescioquid:telegram-oidc-login:0.12.0")
 ```
 
 Requires JVM 25+ and a Spring Boot 4.x runtime with `spring-boot-starter-security` (for
