@@ -8,7 +8,7 @@ plugins {
 dependencies {
     // Spring Boot BOM aligns Spring, Jackson 3 (tools.jackson) and JUnit versions with a
     // consuming Spring Boot 4.1 app, so nothing here pins a version explicitly.
-    api(platform("org.springframework.boot:spring-boot-dependencies:4.1.0"))
+    api(platform("org.springframework.boot:spring-boot-dependencies:4.1.1"))
 
     // Spring types appear in the public surface (RestClient in constructors, @Component beans,
     // ApplicationReadyEvent), so they are `api` — consumers are expected to be Spring Boot apps.
@@ -28,7 +28,7 @@ dependencies {
     // it transitively (in a full Spring Boot app it arrives via spring-boot-starter-logging).
     implementation("org.slf4j:slf4j-api")
 
-    testImplementation(platform("org.springframework.boot:spring-boot-dependencies:4.1.0"))
+    testImplementation(platform("org.springframework.boot:spring-boot-dependencies:4.1.1"))
     testImplementation("org.springframework:spring-test")
     testImplementation("org.junit.jupiter:junit-jupiter")
     testImplementation(kotlin("test-junit5"))
