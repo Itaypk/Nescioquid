@@ -139,15 +139,43 @@ data class FunctionCallDetails(
 
 data class ChatResponse(
     val id: String,
-    val choices: List<Choice>,
+    // Defaulted because an upstream failure can come back as a 200 whose body carries [error]
+    // instead of a generation. Deserializing that into an empty-choices response lets the caller
+    // report what went wrong; failing to deserialize it would only say "malformed response".
+    val choices: List<Choice> = emptyList(),
     override val usage: Usage?,
     // OpenRouter echoes the resolved model and the upstream provider it routed to. Both are
     // absent on non-OpenRouter backends, so they stay nullable. Captured for usage accounting.
     override val model: String? = null,
     override val provider: String? = null,
+    // Set when OpenRouter itself, rather than the model, ended the call — the blocking counterpart
+    // of the mid-stream [StreamErrorPayload].
+    val error: OpenRouterErrorPayload? = null,
 ) : AiResponse
 
 data class Choice(
     val message: ChatMessage,
-    @JsonProperty("finish_reason") val finishReason: String,
+    // Nullable passthrough of provider text. A response that omits it is rare but real (some
+    // error-shaped 200s do), and null says exactly that — the client never substitutes a value,
+    // so a caller branching on this is never reading a guess.
+    @JsonProperty("finish_reason") val finishReason: String? = null,
+    // OpenRouter normalizes [finishReason] onto its own small vocabulary ("stop", "tool_calls",
+    // "error", …), which collapses distinct upstream outcomes. This is the provider's own reason,
+    // unmapped — e.g. Gemini's `MALFORMED_FUNCTION_CALL`, which arrives as a `finish_reason` of
+    // "error" with an empty message and is otherwise indistinguishable from any other failure.
+    @JsonProperty("native_finish_reason") val nativeFinishReason: String? = null,
+    // The upstream error behind an errored choice, when the provider supplied one.
+    val error: OpenRouterErrorPayload? = null,
+)
+
+/**
+ * An error OpenRouter reports in an otherwise-successful (HTTP 200) chat response — at the top
+ * level, or on the choice it belongs to. [metadata] is passed through as-is: its shape is
+ * provider-specific (commonly `raw` and `provider_name`), so it is worth logging but not worth
+ * modeling.
+ */
+data class OpenRouterErrorPayload(
+    val code: Int? = null,
+    val message: String? = null,
+    val metadata: Map<String, Any?>? = null,
 )
