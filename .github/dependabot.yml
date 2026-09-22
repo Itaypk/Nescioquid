@@ -1,0 +1,37 @@
+# Dependabot version updates. See:
+# https://docs.github.com/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+
+version: 2
+updates:
+  # Gradle manifests are spread across the build: the Kotlin plugin version lives in the root
+  # build.gradle.kts, the foojay resolver in settings.gradle.kts, and every actual dependency
+  # (the Spring Boot BOM, mockito-kotlin, …) in a module's own build.gradle.kts. Dependabot only
+  # looks in the directories named here, so a new module needs a line of its own.
+  - package-ecosystem: "gradle"
+    directories:
+      - "/"
+      - "/envelope-crypto"
+      - "/openrouter-client"
+      - "/telegram-oidc-login"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+      semver-patch-days: 3
+    groups:
+      all-dependencies:
+        patterns:
+          - "*"
+
+  # The workflows pin actions by major tag (actions/checkout@v4), which already picks up minor and
+  # patch releases on its own — so in practice this only proposes major bumps. Monthly is plenty.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    cooldown:
+      default-days: 7
+    groups:
+      actions:
+        patterns:
+          - "*"

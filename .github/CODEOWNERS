@@ -1,0 +1,3 @@
+# Owner of everything in this repository. Exists so branch protection on `main` can require a
+# review from a code owner; GitHub resolves the reviewer from this file.
+*   @Itaypk
