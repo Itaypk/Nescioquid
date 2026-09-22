@@ -6,7 +6,7 @@ plugins {
 
 dependencies {
     // No runtime dependencies: this module is pure JDK (javax.crypto) + Kotlin stdlib.
-    testImplementation(platform("org.junit:junit-bom:5.11.4"))
+    testImplementation(platform("org.junit:junit-bom:6.1.3"))
     testImplementation("org.junit.jupiter:junit-jupiter")
     testImplementation(kotlin("test-junit5"))
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
