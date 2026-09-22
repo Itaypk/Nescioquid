@@ -22,6 +22,7 @@ internal class ChatStreamAccumulator {
     private var model: String? = null
     private var provider: String? = null
     private var finishReason: String? = null
+    private var nativeFinishReason: String? = null
     private var usage: Usage? = null
 
     /** Everything the model has emitted as assistant-visible text so far. */
@@ -57,6 +58,7 @@ internal class ChatStreamAccumulator {
             choice.delta.toolCalls?.forEach { fragment ->
                 toolCalls.getOrPut(fragment.index) { PartialToolCall() }.append(fragment)
             }
+            choice.nativeFinishReason?.let { nativeFinishReason = it }
             choice.finishReason?.let {
                 finishReason = it
                 // The wire format never marks an individual tool call complete; `finish_reason` is
@@ -98,9 +100,10 @@ internal class ChatStreamAccumulator {
                         content = content.toString().takeIf { it.isNotEmpty() || calls == null },
                         toolCalls = calls,
                     ),
-                    // `finish_reason` is a non-null passthrough of provider text, so a stream that
-                    // never sent one is reported as "unknown" rather than guessed at.
-                    finishReason = finishReason ?: "unknown",
+                    // Both are plain passthroughs, null when the stream never sent one — the
+                    // blocking path reports them the same way.
+                    finishReason = finishReason,
+                    nativeFinishReason = nativeFinishReason,
                 ),
             ),
             usage = usage,

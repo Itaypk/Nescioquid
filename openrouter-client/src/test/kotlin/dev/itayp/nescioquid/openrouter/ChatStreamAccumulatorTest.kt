@@ -178,10 +178,30 @@ class ChatStreamAccumulatorTest {
     }
 
     @Test
-    fun `a stream with no finish_reason reports it as unknown rather than guessing`() {
+    fun `a stream with no finish_reason reports it as null rather than guessing`() {
         val acc = ChatStreamAccumulator()
         acc.accept(contentChunk("hi"))
-        assertEquals("unknown", acc.toResponse().choices.first().finishReason)
+        assertNull(acc.toResponse().choices.first().finishReason)
+    }
+
+    @Test
+    fun `carries the provider's own finish reason alongside the normalized one`() {
+        val acc = ChatStreamAccumulator()
+        acc.accept(
+            ChatChunk(
+                choices = listOf(
+                    ChunkChoice(
+                        delta = ChunkDelta(),
+                        finishReason = "error",
+                        nativeFinishReason = "MALFORMED_FUNCTION_CALL",
+                    ),
+                ),
+            ),
+        )
+
+        val choice = acc.toResponse().choices.first()
+        assertEquals("error", choice.finishReason)
+        assertEquals("MALFORMED_FUNCTION_CALL", choice.nativeFinishReason)
     }
 
     @Test

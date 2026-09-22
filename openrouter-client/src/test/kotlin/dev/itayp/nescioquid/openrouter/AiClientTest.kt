@@ -82,6 +82,43 @@ class AiClientTest {
     }
 
     @Test
+    fun `parses an error-shaped 200 without losing why the generation failed`() {
+        val fixture = testClient()
+        // What a provider-side failure looks like when OpenRouter still answers 200: an empty
+        // message, zeroed usage, and the reason only in `native_finish_reason` / `error`.
+        val body =
+            """{"id":"gen-1","model":"google/gemini-3.5-flash-lite","provider":"Google",
+               "choices":[{"message":{"role":"assistant","content":""},"finish_reason":"error",
+               "native_finish_reason":"MALFORMED_FUNCTION_CALL",
+               "error":{"code":502,"message":"upstream produced an unparseable function call",
+               "metadata":{"provider_name":"Google"}}}],
+               "usage":{"prompt_tokens":0,"completion_tokens":0}}"""
+        fixture.server.expect(requestTo(COMPLETIONS_URL)).andRespond(withSuccess(body, MediaType.APPLICATION_JSON))
+
+        val choice = fixture.client.chat(testRequest(), testContext).choices.first()
+
+        fixture.server.verify()
+        assertEquals("error", choice.finishReason)
+        assertEquals("MALFORMED_FUNCTION_CALL", choice.nativeFinishReason)
+        assertEquals(502, choice.error?.code)
+        assertEquals("Google", choice.error?.metadata?.get("provider_name"))
+    }
+
+    @Test
+    fun `parses a 200 that carries a top-level error instead of any choices`() {
+        val fixture = testClient()
+        val body = """{"id":"gen-1","error":{"code":429,"message":"rate limited upstream"},"usage":null}"""
+        fixture.server.expect(requestTo(COMPLETIONS_URL)).andRespond(withSuccess(body, MediaType.APPLICATION_JSON))
+
+        val response = fixture.client.chat(testRequest(), testContext)
+
+        fixture.server.verify()
+        assertTrue(response.choices.isEmpty())
+        assertEquals(429, response.error?.code)
+        assertEquals("rate limited upstream", response.error?.message)
+    }
+
+    @Test
     fun `a gate that refuses the call prevents any request`() {
         val fixture = testClient(gate = RecordingGate { _, _ -> throw IllegalStateException("opted out") })
         // No request expected.

@@ -16,7 +16,7 @@ Consumers are expected to be **Spring Boot apps** (the client uses `RestClient` 
 | `ImageClient` | Image generation via the dedicated `POST /images` endpoint. `generate(request, context)`, accounted exactly as a chat call is. |
 | `TranscriptionClient` | Speech-to-text via the dedicated `POST /audio/transcriptions` endpoint. `transcribe(request, context)`, accounted exactly as a chat call is. |
 | `AiCall.kt` | `AiRequest` / `AiResponse` / `CallUsage` — the modality-agnostic supertypes the seams are written against. |
-| `ChatDtos.kt` / `MessageContent.kt` | Chat DTOs — `ChatRequest`/`ChatResponse`, the string↔parts `MessageContent` union, `ContentPart` (text/image/file/audio input), `PluginConfig`/`PdfEngine`, prompt-caching `cache_control`, `ReasoningConfig`. Jackson-only. |
+| `ChatDtos.kt` / `MessageContent.kt` | Chat DTOs — `ChatRequest`/`ChatResponse`, the string↔parts `MessageContent` union, `ContentPart` (text/image/file/audio input), `PluginConfig`/`PdfEngine`, prompt-caching `cache_control`, `ReasoningConfig`, and the `finish_reason` / `native_finish_reason` / `error` fields that explain a failed generation. Jackson-only. |
 | `ImageDtos.kt` | `ImageRequest` (`n`, `resolution`, `aspect_ratio`, `quality`, `output_format`, `seed`, `input_references`, …), `ImageResponse`, and `ImageData` with `bytes` / `dataUrl` accessors. |
 | `TranscriptionDtos.kt` | `TranscriptionRequest` (`input_audio`, `language`, `temperature`) with an `ofBytes` builder, `TranscriptionResponse`, and `TranscriptionUsage` (duration/token counts, `cost`). |
 | `Usage.kt` | `Usage` / `PromptTokensDetails` — token counts, prompt-cache breakdown, and `cost`, implementing `CallUsage`. Shared by the chat and image endpoints. |
@@ -98,6 +98,21 @@ val text = response.choices.first().message.contentText
 
 Component-scan `dev.itayp.nescioquid.openrouter` (and provide the two seams + `AiClientProperties`)
 and the client wires itself.
+
+### When a 200 carries no generation
+
+A provider failure does not always arrive as an HTTP error. OpenRouter can answer 200 with an empty
+assistant message, zeroed usage, and the real reason only in the response body — so a caller that
+reads nothing but `contentText` sees an inexplicably silent model. Three fields say what happened:
+
+| Field | What it tells you |
+| --- | --- |
+| `Choice.finishReason` | OpenRouter's normalized reason (`stop`, `tool_calls`, `length`, `error`, …), or null if the response omitted it. Never substituted by the client. |
+| `Choice.nativeFinishReason` | The provider's own, unmapped reason — e.g. Gemini's `MALFORMED_FUNCTION_CALL`, which a normalized `error` would otherwise hide. |
+| `Choice.error` / `ChatResponse.error` | The upstream error payload, when one was supplied. A top-level `error` can come with no choices at all, so `choices` may be empty. |
+
+Worth logging all three whenever a turn comes back with neither content nor tool calls; without them
+that failure is indistinguishable from a model that simply chose to say nothing.
 
 ## Streaming
 
@@ -368,7 +383,7 @@ before pointing `OPENROUTER_IMAGE_TEST_MODEL` elsewhere or wiring a key into CI.
 ## Coordinates
 
 ```kotlin
-implementation("com.github.Itaypk.Nescioquid:openrouter-client:0.10.0")
+implementation("com.github.Itaypk.Nescioquid:openrouter-client:0.13.0")
 ```
 
 Requires JVM 25+ and a Spring Boot 4.x runtime. Apache-2.0.
