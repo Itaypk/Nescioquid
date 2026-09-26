@@ -39,6 +39,13 @@ sealed interface ChatStreamEvent {
  * blocking path.
  */
 class OpenRouterStreamException(
+    /** The HTTP-style status OpenRouter attached to the error (429, 502, …), when it sent a number. */
     val code: Int? = null,
     message: String,
+    /**
+     * The error's slug, when OpenRouter sent a string code instead of a number (`"server_error"` for
+     * a provider that disconnected). Kept apart from [code] rather than folded into it, because the
+     * two answer different questions and a caller matching on 429 should not have to parse strings.
+     */
+    val type: String? = null,
 ) : RuntimeException(message)

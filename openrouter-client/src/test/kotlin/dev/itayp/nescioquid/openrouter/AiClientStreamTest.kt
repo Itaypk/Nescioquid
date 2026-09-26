@@ -186,12 +186,72 @@ class AiClientStreamTest {
             fixture.client.chatStream(testRequest(), testContext).collect { collected += it }
         }
 
+        // 502 is retryable, but output had already been emitted: exactly one request, no retry.
+        fixture.server.verify()
         assertEquals(502, e.code)
         assertEquals("provider fell over", e.message)
         // The deltas delivered before the error are still valid and were not rolled back.
         assertEquals(listOf<ChatStreamEvent>(ChatStreamEvent.ContentDelta("partial")), collected.toList())
         assertEquals(1, fixture.listener.failures)
         assertTrue(fixture.listener.successes.isEmpty())
+    }
+
+    @Test
+    fun `a rate limit reported as the stream's first chunk is retried like a 429`() = runTest {
+        val fixture = testClient()
+        // The shape OpenRouter sent in production: a 200, then an error chunk before any output.
+        fixture.server.expectStream(sse("""{"error":{"code":429,"message":"temporarily rate-limited upstream"},"choices":[{"delta":{"content":""},"finish_reason":"error"}]}"""))
+        fixture.server.expectStream(sse("""{"choices":[{"delta":{"content":"ok"},"finish_reason":"stop"}]}"""))
+
+        val events = fixture.client.chatStream(testRequest(), testContext).toList()
+
+        fixture.server.verify()
+        assertEquals(ChatStreamEvent.ContentDelta("ok"), events.first())
+        // One call as far as accounting is concerned: the failed attempt is not a failure.
+        assertEquals(1, fixture.gate.calls)
+        assertEquals(0, fixture.listener.failures)
+        assertEquals(1, fixture.listener.chatSuccesses.size)
+    }
+
+    @Test
+    fun `a string error code parses, and server_error is retried`() = runTest {
+        val fixture = testClient()
+        fixture.server.expectStream(sse("""{"error":{"code":"server_error","message":"Provider disconnected unexpectedly"}}"""))
+        fixture.server.expectStream(sse("""{"choices":[{"delta":{"content":"ok"},"finish_reason":"stop"}]}"""))
+
+        val events = fixture.client.chatStream(testRequest(), testContext).toList()
+
+        fixture.server.verify()
+        assertEquals(ChatStreamEvent.ContentDelta("ok"), events.first())
+    }
+
+    @Test
+    fun `a retryable stream error that persists fails once after three attempts`() = runTest {
+        val fixture = testClient()
+        repeat(3) { fixture.server.expectStream(sse("""{"error":{"code":429,"message":"rate-limited"}}""")) }
+
+        val e = assertFailsWith<OpenRouterStreamException> {
+            fixture.client.chatStream(testRequest(), testContext).toList()
+        }
+
+        fixture.server.verify()
+        assertEquals(429, e.code)
+        assertEquals(1, fixture.listener.failures)
+    }
+
+    @Test
+    fun `a non-retryable stream error is not retried, and keeps its slug`() = runTest {
+        val fixture = testClient()
+        fixture.server.expectStream(sse("""{"error":{"code":"invalid_request","message":"no"}}"""))
+
+        val e = assertFailsWith<OpenRouterStreamException> {
+            fixture.client.chatStream(testRequest(), testContext).toList()
+        }
+
+        fixture.server.verify()
+        assertEquals(null, e.code)
+        assertEquals("invalid_request", e.type)
+        assertEquals(1, fixture.listener.failures)
     }
 
     @Test

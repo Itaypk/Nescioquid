@@ -55,6 +55,14 @@ data class FunctionCallChunk(
 )
 
 data class StreamErrorPayload(
-    val code: Int? = null,
+    /**
+     * A number (`429`) or a string (`"server_error"`) — OpenRouter sends both, and a field typed as
+     * either one fails to parse the other, turning a real error into an "unparseable chunk" whose
+     * cause is lost. Read it through [status] and [type].
+     */
+    val code: Any? = null,
     val message: String = "unknown streaming error",
-)
+) {
+    val status: Int? get() = (code as? Number)?.toInt() ?: (code as? String)?.toIntOrNull()
+    val type: String? get() = (code as? String)?.takeIf { it.toIntOrNull() == null }
+}

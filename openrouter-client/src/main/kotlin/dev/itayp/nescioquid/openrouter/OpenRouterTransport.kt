@@ -52,15 +52,26 @@ internal fun openRouterRestClient(
  * status — a malformed request, a bad key, an unsupported parameter — fails the same way however
  * many times it is sent.
  *
+ * The same holds for an error reported *inside* a 200 stream: OpenRouter sends a rate limit that
+ * arrives after the headers as `{"error":{"code":429}}` rather than as a status, so a stream error
+ * carrying a retryable status, or the `server_error` slug of a provider that disconnected, is the
+ * same fault by another route. Whether it *may* be retried is the caller's decision — see
+ * [AiClient.chatStream], which only does so before anything has been emitted.
+ *
  * Note `CancellationException` is a `RuntimeException` on the JVM and is deliberately *not*
  * retryable, so a cancelled call unwinds immediately rather than being retried.
  */
-internal fun isRetryable(e: RuntimeException): Boolean =
-    e is HttpServerErrorException || (e is HttpClientErrorException && e.statusCode.value() == 429)
+internal fun isRetryable(e: RuntimeException): Boolean = when (e) {
+    is HttpServerErrorException -> true
+    is HttpClientErrorException -> e.statusCode.value() == 429
+    is OpenRouterStreamException -> e.code == 429 || e.code in 500..599 || e.type == "server_error"
+    else -> false
+}
 
 /**
  * Runs [attempt] under the client's single retry policy: up to [maxAttempts] tries, doubling from
- * [initialDelayMs], repeating only what [isRetryable] accepts and rethrowing everything else at once.
+ * [initialDelayMs], repeating only what [retryable] accepts — [isRetryable] unless the caller narrows it
+ * — and rethrowing everything else at once.
  *
  * `inline` on purpose. It is the one thing that lets the blocking and streaming paths share a policy
  * rather than keep two copies of it: because the lambdas are inlined into the caller they inherit its
@@ -71,6 +82,7 @@ internal inline fun <T> retrying(
     maxAttempts: Int = 3,
     initialDelayMs: Long = 2000,
     onRetry: (attempt: Int, e: RuntimeException) -> Unit = { _, _ -> },
+    retryable: (RuntimeException) -> Boolean = ::isRetryable,
     sleep: (Long) -> Unit,
     attempt: () -> T,
 ): T {
@@ -80,7 +92,7 @@ internal inline fun <T> retrying(
         try {
             return attempt()
         } catch (e: RuntimeException) {
-            if (!isRetryable(e)) throw e
+            if (!retryable(e)) throw e
             onRetry(index + 1, e)
             lastException = e
             if (index < maxAttempts - 1) sleep(delayMs)
@@ -176,8 +188,9 @@ class OpenRouterTransport(
 
     /**
      * Opens a streaming request to [path], retrying the *connection* under the same policy [call]
-     * uses. Only connection establishment is retried: once events have been delivered to a collector
-     * they cannot be un-delivered, so a stream that breaks mid-flight fails the call.
+     * uses. Only connection establishment is retried here; an error *inside* the stream is
+     * [AiClient.chatStream]'s to retry, because only it knows whether events have already reached a
+     * collector — and once they have, they cannot be un-delivered.
      *
      * Uses `exchange(..., close = false)` to get the live response with its body unconsumed — the
      * caller owns closing it. Because `exchange` does not apply the default status handler, a non-2xx

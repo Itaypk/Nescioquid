@@ -35,7 +35,7 @@ internal class ChatStreamAccumulator {
      * [OpenRouterStreamException] if the chunk carries a mid-stream error.
      */
     fun accept(chunk: ChatChunk): List<ChatStreamEvent> {
-        chunk.error?.let { throw OpenRouterStreamException(it.code, it.message) }
+        chunk.error?.let { throw OpenRouterStreamException(it.status, it.message, it.type) }
 
         id = id ?: chunk.id
         model = chunk.model ?: model
