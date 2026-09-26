@@ -26,6 +26,7 @@ data class ChunkChoice(
     val index: Int = 0,
     val delta: ChunkDelta = ChunkDelta(),
     @JsonProperty("finish_reason") val finishReason: String? = null,
+    @JsonProperty("native_finish_reason") val nativeFinishReason: String? = null,
 )
 
 data class ChunkDelta(

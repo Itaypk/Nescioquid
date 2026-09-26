@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.buffer
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
 import org.springframework.web.client.ResourceAccessException
@@ -81,7 +82,14 @@ class AiClient(private val transport: OpenRouterTransport) {
         // Set before the first emit, never after: it is what makes a retry safe (see below), and an
         // exception thrown *by* that emit — the collector's own — must not look retryable either.
         var emitted = false
-        try {
+        // The terminal failure travels in-band, as a final element, rather than being thrown from
+        // here. Throwing out of the flow body *cancels* the channel `flowOn` hands events over,
+        // and a cancelled channel discards what it is holding — including an element already
+        // handed to the collector but not yet processed by it. That silently drops the last delta
+        // before a failure, which is exactly what this method promises not to do. Closing the
+        // channel normally instead delivers every element in order, and `getOrThrow` below turns
+        // the marker back into the same exception, thrown in the collector after the last event.
+        val failure: Throwable? = try {
             // A stream error that arrives before anything reached the collector is a failed attempt
             // like any other, and is retried under the same policy as a failed connection. OpenRouter
             // reports a rate limit that lands after the 200 headers this way, as the stream's first
@@ -97,13 +105,14 @@ class AiClient(private val transport: OpenRouterTransport) {
                 transport.openStream(streamingRequest, COMPLETIONS_PATH).use { response ->
                     for (payload in sseDataLines(response.body.bufferedReader())) {
                         currentCoroutineContext().ensureActive()
-                        attempt.accept(parseChunk(payload)).forEach { emitted = true; emit(it) }
+                        attempt.accept(parseChunk(payload)).forEach { emitted = true; emit(Result.success(it)) }
                     }
-                    attempt.finish().forEach { emitted = true; emit(it) }
+                    attempt.finish().forEach { emitted = true; emit(Result.success(it)) }
                 }
                 attempt
             }
-            emit(ChatStreamEvent.Completed(accumulator.toResponse()))
+            emit(Result.success(ChatStreamEvent.Completed(accumulator.toResponse())))
+            null
         } catch (e: CancellationException) {
             // The collector walked away. Propagate untouched — swallowing or repurposing a
             // CancellationException breaks structured concurrency, and the listener is deliberately
@@ -113,21 +122,24 @@ class AiClient(private val transport: OpenRouterTransport) {
         } catch (e: IOException) {
             // The socket died mid-stream — a stalled provider hitting the read timeout, a reset, a
             // truncated body. Kotlin has no checked exceptions, so this would otherwise sail past
-            // the RuntimeException catch below and skip accounting entirely. Rethrown as
+            // the RuntimeException catch below and skip accounting entirely. Surfaced as
             // ResourceAccessException because that is what the blocking path surfaces for the same
             // class of failure (RestClient wraps IO errors), keeping the two paths uniform.
             transport.recordFailure(context, request)
-            throw ResourceAccessException("I/O error on AI API stream: ${e.message}", e)
+            ResourceAccessException("I/O error on AI API stream: ${e.message}", e)
         } catch (e: RuntimeException) {
             transport.recordFailure(context, request)
-            throw e
+            e
         }
-        transport.recordSuccess(context, request, accumulator.toResponse())
+        // Emitted outside the try on purpose: an emit inside a catch that also covers the earlier
+        // emits would re-enter the flow after a downstream failure, which is a flow-transparency
+        // violation. The listener has already been notified above either way.
+        if (failure != null) emit(Result.failure(failure)) else transport.recordSuccess(context, request, accumulator.toResponse())
         // Rendezvous rather than flowOn's default 64-element buffer: with a buffer the reader runs
         // ahead of the collector, so a collector that stops early can still have driven the call to
         // completion. Handing each event over directly keeps the collector's view and the call's
         // state in step, and makes cancellation take effect at the next event.
-    }.flowOn(Dispatchers.IO).buffer(Channel.RENDEZVOUS)
+    }.flowOn(Dispatchers.IO).buffer(Channel.RENDEZVOUS).map { it.getOrThrow() }
 
     private fun parseChunk(payload: String): ChatChunk =
         try {
