@@ -19,7 +19,7 @@ data class ChatChunk(
     val provider: String? = null,
     // OpenRouter can report a failure *inside* an already-200 stream (e.g. the upstream provider
     // fell over mid-generation). Non-null here means the stream is over and it failed.
-    val error: StreamErrorPayload? = null,
+    val error: OpenRouterErrorPayload? = null,
 )
 
 data class ChunkChoice(
@@ -53,9 +53,4 @@ data class ToolCallChunk(
 data class FunctionCallChunk(
     val name: String? = null,
     val arguments: String? = null,
-)
-
-data class StreamErrorPayload(
-    val code: Int? = null,
-    val message: String = "unknown streaming error",
 )

@@ -144,9 +144,12 @@ Notes:
 - **Reasoning is stream-only.** `ReasoningDelta` is kept out of the assistant message, so it does
   not appear in `Completed.response` — capture it as it arrives if you need it.
 - **Errors.** A non-2xx response throws the same `HttpClientErrorException` / `HttpServerErrorException`
-  as `chat`, after the same backoff; only connection establishment is retried, never a stream that
-  has already delivered events. An `error` object arriving *inside* a 200 stream throws
-  `OpenRouterStreamException`. Both fire `recordFailure`.
+  as `chat`, after the same backoff. An `error` object arriving *inside* a 200 stream throws
+  `OpenRouterStreamException`, carrying the numeric `code` (429, 502, …) or, when OpenRouter sent a
+  string, the `type` slug (`server_error`). A stream error with a rate-limit or server-fault code is
+  retried under the same backoff **only while nothing has been emitted** — OpenRouter reports a rate
+  limit that lands after the headers as the stream's first chunk — and never once your collector has
+  seen an event. Either way `recordFailure` fires once, after the last attempt.
 - **Cancellation** closes the connection and notifies neither seam — the flow unwinds after your
   collector has moved on, so a notification from there would race with whatever you do next. Account
   for abandoned generations at your own cancellation point. Cancellation takes effect at the next
@@ -383,7 +386,7 @@ before pointing `OPENROUTER_IMAGE_TEST_MODEL` elsewhere or wiring a key into CI.
 ## Coordinates
 
 ```kotlin
-implementation("com.github.Itaypk.Nescioquid:openrouter-client:0.13.1")
+implementation("com.github.Itaypk.Nescioquid:openrouter-client:0.14.0")
 ```
 
 Requires JVM 25+ and a Spring Boot 4.x runtime. Apache-2.0.

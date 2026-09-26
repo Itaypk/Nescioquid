@@ -3,6 +3,7 @@ package dev.itayp.nescioquid.openrouter
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
@@ -56,14 +57,15 @@ class AiClient(private val transport: OpenRouterTransport) {
      *   [org.springframework.web.client.HttpServerErrorException] [chat] throws, after the same
      *   3-attempt backoff on 5xx and 429,
      * - an `error` object arriving inside an already-200 stream, or an unparseable chunk, throws
-     *   [OpenRouterStreamException],
+     *   [OpenRouterStreamException] — after the same backoff when the error is a rate limit or a
+     *   server fault and nothing has been emitted yet, since until then a retry is invisible,
      * - the socket dying mid-stream — including a provider that goes quiet for longer than
      *   [AiClientProperties.streamIdleTimeout] — throws [ResourceAccessException], as the blocking path
      *   does for the same class of failure.
      *
      * In both cases [AiCallListener.recordFailure] fires exactly once, so accounting sees a call
-     * resolve exactly as it does on the blocking path. Deltas already emitted stay valid; only the
-     * connection is retried, never a stream that has begun delivering events.
+     * resolve exactly as it does on the blocking path — once, after the last attempt, not per retry.
+     * Deltas already emitted stay valid; a stream that has begun delivering events is never retried.
      *
      * Collection blocks on socket reads, so the flow runs on [Dispatchers.IO]. Cancellation is
      * observed between events and closes the connection; note that a read already parked in the
@@ -76,7 +78,10 @@ class AiClient(private val transport: OpenRouterTransport) {
     fun chatStream(request: ChatRequest, context: AiCallContext): Flow<ChatStreamEvent> = flow {
         transport.gateCheck(context, request)
         val streamingRequest = request.copy(stream = true, usage = UsageConfig(include = true))
-        val accumulator = ChatStreamAccumulator()
+        var accumulator = ChatStreamAccumulator()
+        // Set before the first emit, never after: it is what makes a retry safe (see below), and an
+        // exception thrown *by* that emit — the collector's own — must not look retryable either.
+        var emitted = false
         // The terminal failure travels in-band, as a final element, rather than being thrown from
         // here. Throwing out of the flow body *cancels* the channel `flowOn` hands events over,
         // and a cancelled channel discards what it is holding — including an element already
@@ -85,13 +90,26 @@ class AiClient(private val transport: OpenRouterTransport) {
         // channel normally instead delivers every element in order, and `getOrThrow` below turns
         // the marker back into the same exception, thrown in the collector after the last event.
         val failure: Throwable? = try {
-            log.debug("Opening chat stream to AI API: model=${request.model}, messages=${request.messages.size}")
-            transport.openStream(streamingRequest, COMPLETIONS_PATH).use { response ->
-                for (payload in sseDataLines(response.body.bufferedReader())) {
-                    currentCoroutineContext().ensureActive()
-                    accumulator.accept(parseChunk(payload)).forEach { emit(Result.success(it)) }
+            // A stream error that arrives before anything reached the collector is a failed attempt
+            // like any other, and is retried under the same policy as a failed connection. OpenRouter
+            // reports a rate limit that lands after the 200 headers this way, as the stream's first
+            // chunk. Once an event has been emitted the call is committed: a retry would deliver a
+            // second, different answer on top of the first.
+            accumulator = retrying(
+                onRetry = { attempt, e -> log.warn("AI API stream failed before any output (attempt $attempt/3): ${e.message}") },
+                retryable = { e -> !emitted && e is OpenRouterStreamException && isTransient(e) },
+                sleep = { delay(it) },
+            ) {
+                val attempt = ChatStreamAccumulator()
+                log.debug("Opening chat stream to AI API: model=${request.model}, messages=${request.messages.size}")
+                transport.openStream(streamingRequest, COMPLETIONS_PATH).use { response ->
+                    for (payload in sseDataLines(response.body.bufferedReader())) {
+                        currentCoroutineContext().ensureActive()
+                        attempt.accept(parseChunk(payload)).forEach { emitted = true; emit(Result.success(it)) }
+                    }
+                    attempt.finish().forEach { emitted = true; emit(Result.success(it)) }
                 }
-                accumulator.finish().forEach { emit(Result.success(it)) }
+                attempt
             }
             emit(Result.success(ChatStreamEvent.Completed(accumulator.toResponse())))
             null
