@@ -226,7 +226,7 @@ class AiClientStreamTest {
     }
 
     /*
-     * `status` and `type` are also the names of [StreamErrorPayload]'s derived properties. A payload
+     * `status` and `type` are also the names of [OpenRouterErrorPayload]'s derived properties. A payload
      * carrying them as keys must still parse — failing here would surface as "unparseable chunk",
      * the very loss of cause the Any-typed `code` exists to prevent.
      */

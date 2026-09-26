@@ -171,7 +171,7 @@ class ChatStreamAccumulatorTest {
     fun `a mid-stream error chunk throws`() {
         val acc = ChatStreamAccumulator()
         val e = assertFailsWith<OpenRouterStreamException> {
-            acc.accept(ChatChunk(error = StreamErrorPayload(code = 502, message = "provider returned error")))
+            acc.accept(ChatChunk(error = OpenRouterErrorPayload(code = 502, message = "provider returned error")))
         }
         assertEquals(502, e.code)
         assertEquals("provider returned error", e.message)

@@ -1,6 +1,7 @@
 package dev.itayp.nescioquid.openrouter
 
 import com.fasterxml.jackson.annotation.JsonInclude
+import com.fasterxml.jackson.annotation.JsonIgnore
 import com.fasterxml.jackson.annotation.JsonProperty
 
 // ── Request ──────────────────────────────────────────────────────────────────
@@ -148,8 +149,8 @@ data class ChatResponse(
     // absent on non-OpenRouter backends, so they stay nullable. Captured for usage accounting.
     override val model: String? = null,
     override val provider: String? = null,
-    // Set when OpenRouter itself, rather than the model, ended the call — the blocking counterpart
-    // of the mid-stream [StreamErrorPayload].
+    // Set when OpenRouter itself, rather than the model, ended the call — the same object a stream
+    // reports as [ChatChunk.error].
     val error: OpenRouterErrorPayload? = null,
 ) : AiResponse
 
@@ -169,13 +170,29 @@ data class Choice(
 )
 
 /**
- * An error OpenRouter reports in an otherwise-successful (HTTP 200) chat response — at the top
- * level, or on the choice it belongs to. [metadata] is passed through as-is: its shape is
- * provider-specific (commonly `raw` and `provider_name`), so it is worth logging but not worth
- * modeling.
+ * An error OpenRouter reports inside an HTTP 200 — at the top level or on a choice of a blocking
+ * response, or as a chunk of a stream (see [ChatChunk.error]). One type for all three because it is
+ * one object on the wire, and two copies of it had already drifted: only one of them parsed a
+ * string code.
+ *
+ * [metadata] is passed through as-is: its shape is provider-specific (commonly `raw` and
+ * `provider_name`), so it is worth logging but not worth modeling.
  */
 data class OpenRouterErrorPayload(
-    val code: Int? = null,
+    /**
+     * A number (`429`) or a string (`"server_error"`) — OpenRouter sends both, and a field typed as
+     * either one fails to parse the other, turning a real error into a parse failure whose cause is
+     * lost. Read it through [status] and [type].
+     */
+    val code: Any? = null,
     val message: String? = null,
     val metadata: Map<String, Any?>? = null,
-)
+) {
+    /** The HTTP-style status, when [code] is one (`429`, `"502"`). */
+    @get:JsonIgnore
+    val status: Int? get() = (code as? Number)?.toInt() ?: (code as? String)?.toIntOrNull()
+
+    /** The slug, when [code] is a word rather than a number (`"server_error"`). */
+    @get:JsonIgnore
+    val type: String? get() = (code as? String)?.takeIf { it.toIntOrNull() == null }
+}

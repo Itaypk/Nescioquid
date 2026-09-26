@@ -100,7 +100,7 @@ class AiClientTest {
         fixture.server.verify()
         assertEquals("error", choice.finishReason)
         assertEquals("MALFORMED_FUNCTION_CALL", choice.nativeFinishReason)
-        assertEquals(502, choice.error?.code)
+        assertEquals(502, choice.error?.status)
         assertEquals("Google", choice.error?.metadata?.get("provider_name"))
     }
 
@@ -114,8 +114,23 @@ class AiClientTest {
 
         fixture.server.verify()
         assertTrue(response.choices.isEmpty())
-        assertEquals(429, response.error?.code)
+        assertEquals(429, response.error?.status)
         assertEquals("rate limited upstream", response.error?.message)
+    }
+
+    /* The same object as a stream's error chunk, and the same trap: typed as a number, a string code fails the whole response. */
+    @Test
+    fun `parses a top-level error whose code is a string`() {
+        val fixture = testClient()
+        val body = """{"id":"gen-1","error":{"code":"server_error","message":"Provider disconnected"},"usage":null}"""
+        fixture.server.expect(requestTo(COMPLETIONS_URL)).andRespond(withSuccess(body, MediaType.APPLICATION_JSON))
+
+        val error = fixture.client.chat(testRequest(), testContext).error
+
+        fixture.server.verify()
+        assertEquals("server_error", error?.type)
+        assertEquals(null, error?.status)
+        assertEquals("Provider disconnected", error?.message)
     }
 
     @Test
