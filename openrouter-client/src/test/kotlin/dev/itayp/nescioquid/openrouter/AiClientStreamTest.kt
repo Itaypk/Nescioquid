@@ -225,6 +225,26 @@ class AiClientStreamTest {
         assertEquals(ChatStreamEvent.ContentDelta("ok"), events.first())
     }
 
+    /*
+     * `status` and `type` are also the names of [StreamErrorPayload]'s derived properties. A payload
+     * carrying them as keys must still parse — failing here would surface as "unparseable chunk",
+     * the very loss of cause the Any-typed `code` exists to prevent.
+     */
+    @Test
+    fun `an error object with extra keys, including ones named like the derived properties, parses`() = runTest {
+        val fixture = testClient()
+        fixture.server.expectStream(
+            sse("""{"error":{"code":400,"message":"no","type":"invalid_request_error","status":"x","metadata":{"raw":"y"}}}"""),
+        )
+
+        val e = assertFailsWith<OpenRouterStreamException> {
+            fixture.client.chatStream(testRequest(), testContext).toList()
+        }
+
+        assertEquals(400, e.code)
+        assertEquals("no", e.message)
+    }
+
     @Test
     fun `a retryable stream error that persists fails once after three attempts`() = runTest {
         val fixture = testClient()

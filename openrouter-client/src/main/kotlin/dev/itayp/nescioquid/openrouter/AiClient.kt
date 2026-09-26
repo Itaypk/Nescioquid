@@ -89,7 +89,7 @@ class AiClient(private val transport: OpenRouterTransport) {
             // second, different answer on top of the first.
             accumulator = retrying(
                 onRetry = { attempt, e -> log.warn("AI API stream failed before any output (attempt $attempt/3): ${e.message}") },
-                retryable = { e -> !emitted && e is OpenRouterStreamException && isRetryable(e) },
+                retryable = { e -> !emitted && e is OpenRouterStreamException && isTransient(e) },
                 sleep = { delay(it) },
             ) {
                 val attempt = ChatStreamAccumulator()
