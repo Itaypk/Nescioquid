@@ -62,7 +62,9 @@ internal object GzipDecodingInterceptor : ClientHttpRequestInterceptor {
             val first = buffered.read()
             val second = buffered.read()
             buffered.reset()
-            return if (first == 0x1f && second == 0x8b) GZIPInputStream(buffered) else buffered
+            // GZIP_MAGIC is the two header bytes read as a little-endian short.
+            val isGzip = (first or (second shl 8)) == GZIPInputStream.GZIP_MAGIC
+            return if (isGzip) GZIPInputStream(buffered) else buffered
         }
     }
 }
