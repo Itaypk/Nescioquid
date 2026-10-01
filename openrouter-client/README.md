@@ -386,7 +386,7 @@ before pointing `OPENROUTER_IMAGE_TEST_MODEL` elsewhere or wiring a key into CI.
 ## Coordinates
 
 ```kotlin
-implementation("com.github.Itaypk.Nescioquid:openrouter-client:0.14.0")
+implementation("com.github.Itaypk.Nescioquid:openrouter-client:0.14.1")
 ```
 
 Requires JVM 25+ and a Spring Boot 4.x runtime. Apache-2.0.

@@ -29,13 +29,13 @@ repositories {
 }
 
 dependencies {
-    implementation("com.github.Itaypk.Nescioquid:envelope-crypto:0.14.0")
-    implementation("com.github.Itaypk.Nescioquid:openrouter-client:0.14.0")
-    implementation("com.github.Itaypk.Nescioquid:telegram-oidc-login:0.14.0")
+    implementation("com.github.Itaypk.Nescioquid:envelope-crypto:0.14.1")
+    implementation("com.github.Itaypk.Nescioquid:openrouter-client:0.14.1")
+    implementation("com.github.Itaypk.Nescioquid:telegram-oidc-login:0.14.1")
 }
 ```
 
-Replace `0.14.0` with a released Git tag (or a commit hash / `main-SNAPSHOT`). JitPack builds each
+Replace `0.14.1` with a released Git tag (or a commit hash / `main-SNAPSHOT`). JitPack builds each
 module on first request.
 
 ### JVM 25 required
