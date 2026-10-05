@@ -127,13 +127,21 @@ class OpenRouterTransport(
 ) {
     private val log = LoggerFactory.getLogger(OpenRouterTransport::class.java)
 
-    private val client = openRouterRestClient(properties, restClientBuilder, properties.readTimeout)
+    /**
+     * A [RestClient] preconfigured for OpenRouter — base URL, bearer auth and the blocking path's
+     * timeouts — for endpoints this library doesn't wrap. Calls made through it are *not* accounted:
+     * no [AiCallGate], no [AiCallListener], no retries.
+     *
+     * It always sends the API key. That is harmless on OpenRouter's public endpoints (same host, and
+     * they ignore it), and saves callers from having to know which endpoints need it.
+     */
+    val restClient: RestClient = openRouterRestClient(properties, restClientBuilder, properties.readTimeout)
 
     // Image generation routinely outruns the read timeout tuned for text completion, so it gets its
     // own client. As with streamClient below, an injected builder owns its transport config, leaving
     // nothing to vary — so all three collapse to one client in tests.
     private val imageClient = if (restClientBuilder != null) {
-        client
+        restClient
     } else {
         openRouterRestClient(properties, null, properties.imageReadTimeout)
     }
@@ -141,7 +149,7 @@ class OpenRouterTransport(
     // Same reasoning as imageClient: transcription gets its own timeout budget rather than sharing
     // the chat read timeout.
     private val transcriptionClient = if (restClientBuilder != null) {
-        client
+        restClient
     } else {
         openRouterRestClient(properties, null, properties.transcriptionReadTimeout)
     }
@@ -151,7 +159,7 @@ class OpenRouterTransport(
      * shortening the blocking path's budget for a whole generation.
      */
     val streamClient: RestClient = if (restClientBuilder != null) {
-        client
+        restClient
     } else {
         openRouterRestClient(properties, null, properties.streamIdleTimeout)
     }
@@ -243,7 +251,7 @@ class OpenRouterTransport(
     private fun clientFor(path: String) = when (path) {
         IMAGES_PATH -> imageClient
         AUDIO_TRANSCRIPTIONS_PATH -> transcriptionClient
-        else -> client
+        else -> restClient
     }
 
     private fun statusOf(e: RuntimeException) = when (e) {

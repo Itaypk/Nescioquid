@@ -16,7 +16,7 @@ data class AiClientProperties(
      * Whether the consumer routes its calls with zero data retention (`provider.zdr`). The client
      * doesn't apply this itself — [ProviderPreferences.zdr] does, per request, and defaults to on as
      * this does. It tells the startup prefetch to check that every model in [configuredModels] has
-     * a ZDR endpoint, since OpenRouter refuses to route one that hasn't.
+     * a ZDR endpoint (and fail startup if one hasn't), since OpenRouter refuses to route such a model.
      */
     val zeroDataRetention: Boolean = true,
     /** Max time to establish the TCP connection. */

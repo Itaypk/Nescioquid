@@ -30,9 +30,6 @@ dependencies {
 
     testImplementation(platform("org.springframework.boot:spring-boot-dependencies:4.1.1"))
     testImplementation("org.springframework:spring-test")
-    // OutputCaptureExtension plus a logging backend, so tests can assert on the warnings we log.
-    testImplementation("org.springframework.boot:spring-boot-test")
-    testRuntimeOnly("org.slf4j:slf4j-simple")
     testImplementation("org.junit.jupiter:junit-jupiter")
     testImplementation(kotlin("test-junit5"))
     testImplementation("org.mockito.kotlin:mockito-kotlin:6.3.0")

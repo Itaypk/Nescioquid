@@ -1,9 +1,6 @@
 package dev.itayp.nescioquid.openrouter
 
 import org.junit.jupiter.api.Test
-import org.junit.jupiter.api.extension.ExtendWith
-import org.springframework.boot.test.system.CapturedOutput
-import org.springframework.boot.test.system.OutputCaptureExtension
 import org.springframework.http.HttpMethod
 import org.springframework.http.MediaType
 import org.springframework.test.web.client.MockRestServiceServer
@@ -19,7 +16,6 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-@ExtendWith(OutputCaptureExtension::class)
 class ModelCapabilityServiceTest {
 
     // ZDR off by default, so the capability tests don't each have to expect the /endpoints/zdr lookup.
@@ -247,21 +243,20 @@ class ModelCapabilityServiceTest {
     }
 
     @Test
-    fun `prefetch names the configured models that have no ZDR endpoint`(output: CapturedOutput) {
+    fun `prefetch fails when a configured model has no ZDR endpoint`() {
         val (svc, server) = service(models = setOf("a/zdr", "b/no-zdr:free"), zeroDataRetention = true)
         server.expectModel("a/zdr")
         server.expectModel("b/no-zdr:free")
         server.expectZdrModels("a/zdr", "b/no-zdr")
 
-        svc.prefetch()
+        val e = assertFailsWith<IllegalStateException> { svc.prefetch() }
 
         server.verify()
-        assertContains(output.all, "no zero-data-retention endpoint")
-        assertContains(output.all, "[b/no-zdr:free]")
+        assertContains(e.message!!, "[b/no-zdr:free]")
     }
 
     @Test
-    fun `prefetch stays quiet when every configured model has a ZDR endpoint`(output: CapturedOutput) {
+    fun `prefetch passes when every configured model has a ZDR endpoint`() {
         val (svc, server) = service(models = setOf("a/zdr"), zeroDataRetention = true)
         server.expectModel("a/zdr")
         server.expectZdrModels("a/zdr")
@@ -269,11 +264,10 @@ class ModelCapabilityServiceTest {
         svc.prefetch()
 
         server.verify()
-        assertFalse(output.all.contains("WARN"))
     }
 
     @Test
-    fun `a failed ZDR lookup is logged, not thrown`(output: CapturedOutput) {
+    fun `a failed ZDR lookup doesn't fail prefetch`() {
         val (svc, server) = service(models = setOf("a/zdr"), zeroDataRetention = true)
         server.expectModel("a/zdr")
         server.expect(requestTo("https://openrouter.ai/api/v1/endpoints/zdr")).andRespond(withServerError())
@@ -281,7 +275,6 @@ class ModelCapabilityServiceTest {
         svc.prefetch()
 
         server.verify()
-        assertContains(output.all, "Couldn't fetch OpenRouter's zero-data-retention endpoints")
     }
 
     @Test

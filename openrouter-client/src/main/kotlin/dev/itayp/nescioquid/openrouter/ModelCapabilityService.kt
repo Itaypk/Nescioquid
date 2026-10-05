@@ -28,9 +28,9 @@ import java.util.concurrent.ConcurrentHashMap
  * capabilities, and callers treat that conservatively (reasoning omitted).
  *
  * It also answers which models have a zero-data-retention endpoint ([zdrModels]), and, when
- * [AiClientProperties.zeroDataRetention] is on, warns at startup about configured models that have
- * none: OpenRouter refuses to route those under ZDR, so every call to them fails — a
- * misconfiguration that otherwise only shows up when the first call does.
+ * [AiClientProperties.zeroDataRetention] is on, fails startup if a configured model has none:
+ * OpenRouter refuses to route such a model under ZDR, so every call to it would fail — better to
+ * find out at deploy time than from the first broken AI feature.
  */
 @Component
 class ModelCapabilityService(
@@ -51,7 +51,10 @@ class ModelCapabilityService(
     @Volatile
     private var zdrModels: Set<String>? = null
 
-    /** Prefetch capabilities for every configured model once the app is up. Never blocks/fails boot. */
+    /**
+     * Prefetch capabilities for every configured model once the app is up. Best-effort, except for
+     * the zero-data-retention check, which throws (and so fails startup) on a misconfigured model.
+     */
     @EventListener(ApplicationReadyEvent::class)
     fun prefetch() {
         if (properties.apiKey.isBlank()) {
@@ -101,7 +104,8 @@ class ModelCapabilityService(
         .toSet()
         .also { zdrModels = it }
 
-    // Advisory only: a failed lookup is logged and never blocks startup.
+    // Only a confirmed mismatch throws. A failed lookup is logged and skipped, so an OpenRouter outage
+    // can't stop the app from starting.
     private fun checkZeroDataRetention() {
         if (properties.configuredModels.isEmpty()) return
 
@@ -112,16 +116,12 @@ class ModelCapabilityService(
             return
         }
 
-        if (withoutZdr.isEmpty()) {
-            log.debug("Every configured model has a zero-data-retention endpoint: {}", properties.configuredModels)
-        } else {
-            log.warn(
-                "Zero data retention is on, but these configured models have no zero-data-retention endpoint, so " +
-                    "every call to them will fail: {}. Pick models listed at {}/endpoints/zdr, or turn zero data " +
-                    "retention off.",
-                withoutZdr.sorted(), properties.baseUrl,
-            )
+        check(withoutZdr.isEmpty()) {
+            "Zero data retention is on, but these configured models have no zero-data-retention endpoint, so every " +
+                "call to them would fail: ${withoutZdr.sorted()}. Pick models listed at ${properties.baseUrl}/endpoints/zdr, " +
+                "or turn zero data retention off."
         }
+        log.debug("Every configured model has a zero-data-retention endpoint: {}", properties.configuredModels)
     }
 
     private fun fetch(model: String) {
