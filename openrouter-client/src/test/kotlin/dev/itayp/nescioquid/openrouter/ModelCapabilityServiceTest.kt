@@ -9,16 +9,20 @@ import org.springframework.test.web.client.match.MockRestRequestMatchers.request
 import org.springframework.test.web.client.response.MockRestResponseCreators.withServerError
 import org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess
 import org.springframework.web.client.RestClient
+import kotlin.test.assertContains
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class ModelCapabilityServiceTest {
 
+    // ZDR off by default, so the capability tests don't each have to expect the /endpoints/zdr lookup.
     private fun service(
         apiKey: String = "k",
         models: Set<String> = emptySet(),
+        zeroDataRetention: Boolean = false,
     ): Pair<ModelCapabilityService, MockRestServiceServer> {
         val builder = RestClient.builder()
         val server = MockRestServiceServer.bindTo(builder).build()
@@ -26,6 +30,7 @@ class ModelCapabilityServiceTest {
             apiKey = apiKey,
             baseUrl = "https://openrouter.ai/api/v1",
             configuredModels = models,
+            zeroDataRetention = zeroDataRetention,
         )
         return ModelCapabilityService(properties, builder) to server
     }
@@ -198,5 +203,87 @@ class ModelCapabilityServiceTest {
         assertFalse(svc.supportsImageOutput("openai/gpt-oss-20b:free"))
         // An unfetched model is likewise not assumed capable.
         assertFalse(svc.supportsImageOutput("some/other-model"))
+    }
+
+    private fun MockRestServiceServer.expectZdrModels(vararg models: String) {
+        val data = models.joinToString(",") { """{"model_id":"$it","provider_name":"Google"}""" }
+        expect(requestTo("https://openrouter.ai/api/v1/endpoints/zdr"))
+            .andRespond(withSuccess("""{"data":[$data]}""", MediaType.APPLICATION_JSON))
+    }
+
+    private fun MockRestServiceServer.expectModel(model: String) {
+        expect(requestTo("https://openrouter.ai/api/v1/model/$model"))
+            .andRespond(withSuccess("""{"data":{}}""", MediaType.APPLICATION_JSON))
+    }
+
+    @Test
+    fun `zdrModels lists the models with a ZDR endpoint, fetched once`() {
+        val (svc, server) = service()
+        // One model with two ZDR endpoints, and an entry with no model id.
+        server.expect(requestTo("https://openrouter.ai/api/v1/endpoints/zdr"))
+            .andRespond(
+                withSuccess(
+                    """{"data":[{"model_id":"a/one"},{"model_id":"a/one"},{"model_id":"b/two"},{"provider_name":"X"}]}""",
+                    MediaType.APPLICATION_JSON,
+                ),
+            )
+
+        assertEquals(setOf("a/one", "b/two"), svc.zdrModels())
+        assertEquals(setOf("a/one", "b/two"), svc.zdrModels())
+
+        server.verify() // a single request
+    }
+
+    @Test
+    fun `zdrModels throws when the lookup fails`() {
+        val (svc, server) = service()
+        server.expect(requestTo("https://openrouter.ai/api/v1/endpoints/zdr")).andRespond(withServerError())
+
+        assertFailsWith<Exception> { svc.zdrModels() }
+    }
+
+    @Test
+    fun `prefetch fails when a configured model has no ZDR endpoint`() {
+        val (svc, server) = service(models = setOf("a/zdr", "b/no-zdr:free"), zeroDataRetention = true)
+        server.expectModel("a/zdr")
+        server.expectModel("b/no-zdr:free")
+        server.expectZdrModels("a/zdr", "b/no-zdr")
+
+        val e = assertFailsWith<IllegalStateException> { svc.prefetch() }
+
+        server.verify()
+        assertContains(e.message!!, "[b/no-zdr:free]")
+    }
+
+    @Test
+    fun `prefetch passes when every configured model has a ZDR endpoint`() {
+        val (svc, server) = service(models = setOf("a/zdr"), zeroDataRetention = true)
+        server.expectModel("a/zdr")
+        server.expectZdrModels("a/zdr")
+
+        svc.prefetch()
+
+        server.verify()
+    }
+
+    @Test
+    fun `a failed ZDR lookup doesn't fail prefetch`() {
+        val (svc, server) = service(models = setOf("a/zdr"), zeroDataRetention = true)
+        server.expectModel("a/zdr")
+        server.expect(requestTo("https://openrouter.ai/api/v1/endpoints/zdr")).andRespond(withServerError())
+
+        svc.prefetch()
+
+        server.verify()
+    }
+
+    @Test
+    fun `prefetch skips the ZDR lookup when zero data retention is off`() {
+        val (svc, server) = service(models = setOf("b/no-zdr:free"))
+        server.expectModel("b/no-zdr:free")
+
+        svc.prefetch()
+
+        server.verify() // no /endpoints/zdr request expected, none made
     }
 }

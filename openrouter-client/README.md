@@ -11,7 +11,7 @@ Consumers are expected to be **Spring Boot apps** (the client uses `RestClient` 
 
 | Class | Role |
 | --- | --- |
-| `OpenRouterTransport` | The shared transport: bearer auth, timeouts, 3-attempt exponential backoff on 5xx/429, and the gate/listener seams that make a call an *accounted* call. Every modality client delegates to it, so they share connection pools and one definition of "one call". |
+| `OpenRouterTransport` | The shared transport: bearer auth, timeouts, 3-attempt exponential backoff on 5xx/429, and the gate/listener seams that make a call an *accounted* call. Every modality client delegates to it, so they share connection pools and one definition of "one call". Its `restClient` is the same pre-configured client (base URL, bearer auth, timeouts), public for endpoints this library doesn't wrap; calls through it aren't accounted or retried. |
 | `AiClient` | Chat completions. `chat(request, context)` is the blocking call; `chatStream(request, context)` is the streaming counterpart, returning a cold `Flow<ChatStreamEvent>`. The `request` is the source of truth for the wire, including `reasoning`. |
 | `ImageClient` | Image generation via the dedicated `POST /images` endpoint. `generate(request, context)`, accounted exactly as a chat call is. |
 | `TranscriptionClient` | Speech-to-text via the dedicated `POST /audio/transcriptions` endpoint. `transcribe(request, context)`, accounted exactly as a chat call is. |
@@ -23,9 +23,9 @@ Consumers are expected to be **Spring Boot apps** (the client uses `RestClient` 
 | `ProviderPreferences.kt` | The provider-routing object (`zdr`, `only`, `order`, `ignore`, `sort`, `allow_fallbacks`), accepted identically by every endpoint. |
 | `AiStreamEvents.kt` | `ChatStreamEvent` — the `ContentDelta` / `ReasoningDelta` / `ToolCallReady` / `Completed` union a `chatStream` collector sees — and `OpenRouterStreamException`. |
 | `AiStreamDtos.kt` | The SSE chunk/delta wire shapes. Internal plumbing for `chatStream`; you work with `ChatStreamEvent` instead. |
-| `ModelCapabilityService` | Fetches `/model/{slug}` capabilities for **chat** models (reasoning support, supported efforts, input/output modalities). Prefetches configured models at startup; caches in memory. |
+| `ModelCapabilityService` | Fetches `/model/{slug}` capabilities for **chat** models (reasoning support, supported efforts, input/output modalities). Prefetches configured models at startup; caches in memory. Also lists the models with a zero-data-retention endpoint (`zdrModels()`, from `/endpoints/zdr`) and fails startup when a configured model has none (while `AiClientProperties.zeroDataRetention` is on; a failed lookup is only logged). |
 | `ImageModelCapabilityService` | Fetches the `/images/models` listing for **image** models — a different endpoint with a different shape, including which parameters each model accepts and their legal values. One call describes every model. |
-| `AiClientProperties` | The minimal config contract (`apiKey` / `baseUrl` / `configuredModels`) you supply as a bean. |
+| `AiClientProperties` | The minimal config contract (`apiKey` / `baseUrl` / `configuredModels`, plus optional timeouts and `zeroDataRetention`) you supply as a bean. |
 | `AiCallContext` | Per-call attribution carrier (user, conversation type, optional session/conversation ids). |
 | `tool/*` | `AiTool` / `ToolKind` / `ToolRegistry` — a function-tool abstraction and registry. |
 | `AssistantJson.kt` | `extractJsonObjectSpan` / `parseAssistantJsonResponse` — pull a JSON object out of an LLM response, tolerating surrounding prose or code fences. |

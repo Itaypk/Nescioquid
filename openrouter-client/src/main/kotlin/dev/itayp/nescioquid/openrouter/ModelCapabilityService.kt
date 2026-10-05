@@ -26,6 +26,11 @@ import java.util.concurrent.ConcurrentHashMap
  *
  * The cache is populated once at startup (best-effort). An unfetched/unknown model returns null
  * capabilities, and callers treat that conservatively (reasoning omitted).
+ *
+ * It also answers which models have a zero-data-retention endpoint ([zdrModels]), and, when
+ * [AiClientProperties.zeroDataRetention] is on, fails startup if a configured model has none:
+ * OpenRouter refuses to route such a model under ZDR, so every call to it would fail — better to
+ * find out at deploy time than from the first broken AI feature.
  */
 @Component
 class ModelCapabilityService(
@@ -42,7 +47,14 @@ class ModelCapabilityService(
     // model slug -> capabilities. Absent key means "unknown" (fetch failed or not attempted).
     private val capabilities = ConcurrentHashMap<String, ModelCapabilities>()
 
-    /** Prefetch capabilities for every configured model once the app is up. Never blocks/fails boot. */
+    // Null until the first successful fetch; a failed one is retried on the next call.
+    @Volatile
+    private var zdrModels: Set<String>? = null
+
+    /**
+     * Prefetch capabilities for every configured model once the app is up. Best-effort, except for
+     * the zero-data-retention check, which throws (and so fails startup) on a misconfigured model.
+     */
     @EventListener(ApplicationReadyEvent::class)
     fun prefetch() {
         if (properties.apiKey.isBlank()) {
@@ -52,6 +64,7 @@ class ModelCapabilityService(
         for (model in properties.configuredModels) {
             fetch(model)
         }
+        if (properties.zeroDataRetention) checkZeroDataRetention()
     }
 
     /** Cached capabilities for [model], or null when unknown (not fetched / fetch failed). */
@@ -77,6 +90,39 @@ class ModelCapabilityService(
      */
     fun supportsImageOutput(model: String): Boolean =
         capabilities[model]?.outputModalities?.contains("image") == true
+
+    /**
+     * The slugs of the models that have at least one zero-data-retention endpoint, from
+     * `GET /endpoints/zdr`. Fetched once and cached; throws when the fetch fails.
+     */
+    fun zdrModels(): Set<String> = zdrModels ?: client.get()
+        .uri("/endpoints/zdr")
+        .retrieve()
+        .body(ZdrEndpointsResponse::class.java)
+        ?.data.orEmpty()
+        .mapNotNull { endpoint -> endpoint.modelId?.takeIf { it.isNotBlank() } }
+        .toSet()
+        .also { zdrModels = it }
+
+    // Only a confirmed mismatch throws. A failed lookup is logged and skipped, so an OpenRouter outage
+    // can't stop the app from starting.
+    private fun checkZeroDataRetention() {
+        if (properties.configuredModels.isEmpty()) return
+
+        val withoutZdr = try {
+            properties.configuredModels - zdrModels()
+        } catch (e: Exception) {
+            log.warn("Couldn't fetch OpenRouter's zero-data-retention endpoints, so the configured models weren't checked: {}", e.message)
+            return
+        }
+
+        check(withoutZdr.isEmpty()) {
+            "Zero data retention is on, but these configured models have no zero-data-retention endpoint, so every " +
+                "call to them would fail: ${withoutZdr.sorted()}. Pick models listed at ${properties.baseUrl}/endpoints/zdr, " +
+                "or turn zero data retention off."
+        }
+        log.debug("Every configured model has a zero-data-retention endpoint: {}", properties.configuredModels)
+    }
 
     private fun fetch(model: String) {
         try {
@@ -161,4 +207,14 @@ private data class ReasoningInfo(
 private data class Architecture(
     @JsonProperty("input_modalities") val inputModalities: List<String>? = null,
     @JsonProperty("output_modalities") val outputModalities: List<String>? = null,
+)
+
+@JsonIgnoreProperties(ignoreUnknown = true)
+private data class ZdrEndpointsResponse(
+    val data: List<ZdrEndpoint>? = null,
+)
+
+@JsonIgnoreProperties(ignoreUnknown = true)
+private data class ZdrEndpoint(
+    @JsonProperty("model_id") val modelId: String? = null,
 )
