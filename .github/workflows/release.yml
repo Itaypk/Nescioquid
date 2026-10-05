@@ -12,6 +12,9 @@ concurrency: release
 jobs:
   release:
     runs-on: ubuntu-latest
+    # Build + tag take a few minutes; the rest is waiting on JitPack. Cap it so a stuck JitPack
+    # build costs twenty minutes instead of the six-hour default.
+    timeout-minutes: 20
     permissions:
       contents: write
     steps:
@@ -72,7 +75,9 @@ jobs:
           # builds once, so one build.log covers both modules.
           set -u
           buildlog="https://jitpack.io/com/github/Itaypk/Nescioquid/${VERSION}/build.log"
-          deadline=$(( $(date +%s) + 1500 )) # give JitPack up to 25 minutes
+          # Up to 12 minutes, so this reports its own timeout (with the build log link) before the
+          # job's 20-minute cap kills it silently.
+          deadline=$(( $(date +%s) + 720 ))
           while :; do
             all_ok=1
             for module in envelope-crypto openrouter-client; do
