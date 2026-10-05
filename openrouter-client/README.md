@@ -23,9 +23,9 @@ Consumers are expected to be **Spring Boot apps** (the client uses `RestClient` 
 | `ProviderPreferences.kt` | The provider-routing object (`zdr`, `only`, `order`, `ignore`, `sort`, `allow_fallbacks`), accepted identically by every endpoint. |
 | `AiStreamEvents.kt` | `ChatStreamEvent` — the `ContentDelta` / `ReasoningDelta` / `ToolCallReady` / `Completed` union a `chatStream` collector sees — and `OpenRouterStreamException`. |
 | `AiStreamDtos.kt` | The SSE chunk/delta wire shapes. Internal plumbing for `chatStream`; you work with `ChatStreamEvent` instead. |
-| `ModelCapabilityService` | Fetches `/model/{slug}` capabilities for **chat** models (reasoning support, supported efforts, input/output modalities). Prefetches configured models at startup; caches in memory. |
+| `ModelCapabilityService` | Fetches `/model/{slug}` capabilities for **chat** models (reasoning support, supported efforts, input/output modalities). Prefetches configured models at startup; caches in memory. Also lists the models with a zero-data-retention endpoint (`zdrModels()`, from `/endpoints/zdr`) and warns at startup about configured models that have none. |
 | `ImageModelCapabilityService` | Fetches the `/images/models` listing for **image** models — a different endpoint with a different shape, including which parameters each model accepts and their legal values. One call describes every model. |
-| `AiClientProperties` | The minimal config contract (`apiKey` / `baseUrl` / `configuredModels`) you supply as a bean. |
+| `AiClientProperties` | The minimal config contract (`apiKey` / `baseUrl` / `configuredModels`, plus optional timeouts and `zeroDataRetention`) you supply as a bean. |
 | `AiCallContext` | Per-call attribution carrier (user, conversation type, optional session/conversation ids). |
 | `tool/*` | `AiTool` / `ToolKind` / `ToolRegistry` — a function-tool abstraction and registry. |
 | `AssistantJson.kt` | `extractJsonObjectSpan` / `parseAssistantJsonResponse` — pull a JSON object out of an LLM response, tolerating surrounding prose or code fences. |
