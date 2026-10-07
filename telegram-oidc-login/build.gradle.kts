@@ -28,7 +28,7 @@ dependencies {
     testImplementation("org.springframework:spring-test")
     testImplementation("org.junit.jupiter:junit-jupiter")
     testImplementation(kotlin("test-junit5"))
-    testImplementation("org.mockito.kotlin:mockito-kotlin:6.3.0")
+    testImplementation("org.mockito.kotlin:mockito-kotlin:6.4.0")
     // The tests exercise the real RestClient codepath (MockRestServiceServer), so they need the
     // JSON converter the compileOnly dependency above only promises at the consumer's expense.
     testImplementation("tools.jackson.module:jackson-module-kotlin")
