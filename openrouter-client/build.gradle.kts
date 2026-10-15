@@ -1,6 +1,6 @@
 plugins {
     kotlin("jvm")
-    kotlin("plugin.spring") version "2.4.20"
+    kotlin("plugin.spring") version "2.4.21"
     `java-library`
     `maven-publish`
 }
