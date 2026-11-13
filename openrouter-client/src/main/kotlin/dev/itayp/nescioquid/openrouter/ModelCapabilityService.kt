@@ -5,6 +5,8 @@ import com.fasterxml.jackson.annotation.JsonProperty
 import org.slf4j.LoggerFactory
 import org.springframework.boot.context.event.ApplicationReadyEvent
 import org.springframework.context.event.EventListener
+import org.springframework.core.Ordered
+import org.springframework.core.annotation.Order
 import org.springframework.stereotype.Component
 import org.springframework.web.client.RestClient
 import java.util.concurrent.ConcurrentHashMap
@@ -20,8 +22,9 @@ import java.util.concurrent.ConcurrentHashMap
  *   a reasoning arg to a model that doesn't support it is an illegal argument, and an effort value
  *   outside `supported_efforts` is likewise rejected.
  * - **Modalities** — `architecture.input_modalities` and `architecture.output_modalities`
- *   (text/image/audio/…), captured for multimodal features. Note this describes *chat* models; the
- *   dedicated image-generation models have their own endpoint and shape, served by
+ *   (text/image/audio/…), captured for multimodal features. This covers chat models and
+ *   speech-to-text models (input `audio`, output `transcription`), which `/model/{slug}` serves alike;
+ *   the dedicated image-generation models have their own endpoint and shape, served by
  *   [ImageModelCapabilityService].
  *
  * The cache is populated once at startup (best-effort). An unfetched/unknown model returns null
@@ -54,8 +57,13 @@ class ModelCapabilityService(
     /**
      * Prefetch capabilities for every configured model once the app is up. Best-effort, except for
      * the zero-data-retention check, which throws (and so fails startup) on a misconfigured model.
+     *
+     * Ordered first among `ApplicationReadyEvent` listeners, so a consumer's own listener (a startup
+     * check that a configured model can do its job, say) sees the capabilities. Unordered listeners
+     * all share the lowest precedence, so without this the order would be down to bean registration.
      */
     @EventListener(ApplicationReadyEvent::class)
+    @Order(Ordered.HIGHEST_PRECEDENCE)
     fun prefetch() {
         if (properties.apiKey.isBlank()) {
             log.info("AI API key not configured; skipping model capability prefetch")

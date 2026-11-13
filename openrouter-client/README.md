@@ -267,7 +267,11 @@ caps?.supportsStreaming               // reported for model choice; the client c
 apart. A model missing from the cache returns `null`, which means *unknown*, not *unsupported*.
 
 Both capability services prefetch at `ApplicationReadyEvent` and are best-effort: a failed fetch logs
-and leaves the cache as it was rather than breaking boot.
+and leaves the cache as it was rather than breaking boot. `ModelCapabilityService`'s prefetch is
+ordered first among that event's listeners, so a consumer's own startup check on the same event sees
+the capabilities. It covers speech-to-text slugs too: OpenRouter serves them from `/model/{slug}`
+(input `audio`, output `transcription`) and lists them in `/endpoints/zdr`, so a transcription model
+can go in `configuredModels` and gets the zero-data-retention check like a chat model.
 
 For chat models that emit images *inline* in a completion — a different thing from an `/images`
 model — `ModelCapabilityService.supportsImageOutput(model)` reads `architecture.output_modalities`.
