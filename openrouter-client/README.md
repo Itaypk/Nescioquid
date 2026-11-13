@@ -379,13 +379,16 @@ and **skipped** (not failed) when none is set, so it stays dormant in normal CI:
 ```bash
 export OPENROUTER_API_KEY=sk-or-...            # or put it in a git-ignored .env at the repo root
 # OPENROUTER_TEST_MODEL overrides the default openai/gpt-5-nano (needs structured-output + tool support)
+# OPENROUTER_RUN_IMAGE_GENERATION=true opts in to the (paid) image-generation test
 # OPENROUTER_IMAGE_TEST_MODEL overrides the default black-forest-labs/flux.2-klein-4b
 ./gradlew :openrouter-client:test --tests '*OpenRouterIntegrationTest'
 ```
 
-Note the image test **costs real money on every run** — cents rather than the fractions of a cent the
-text calls cost. The default is the cheapest image model found at the time of writing; weigh that
-before pointing `OPENROUTER_IMAGE_TEST_MODEL` elsewhere or wiring a key into CI.
+The image-generation test **costs real money on every run** — cents rather than the fractions of a
+cent the text calls cost — so a key alone doesn't run it: it is skipped unless
+`OPENROUTER_RUN_IMAGE_GENERATION=true` is set too, which CI doesn't do. Run it when touching the image
+path. The default is the cheapest image model found at the time of writing; weigh that before
+pointing `OPENROUTER_IMAGE_TEST_MODEL` elsewhere.
 
 ## Coordinates
 

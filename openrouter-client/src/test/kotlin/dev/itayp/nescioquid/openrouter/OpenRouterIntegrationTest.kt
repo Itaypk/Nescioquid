@@ -34,8 +34,9 @@ import kotlin.test.assertTrue
  *
  * The image-generation check runs against `black-forest-labs/flux.2-klein-4b` (chosen as the cheapest
  * image model available); override with `OPENROUTER_IMAGE_TEST_MODEL`. Unlike the text calls here,
- * an image generation costs real money on every run — cents rather than fractions of a cent — so
- * keep that in mind when pointing it at a different model.
+ * an image generation costs real money on every run — cents rather than fractions of a cent — so it
+ * is skipped unless `OPENROUTER_RUN_IMAGE_GENERATION=true` is also set: run it when touching the
+ * image path, not on every build.
  *
  * Tagged `integration` so they can be selected/excluded by tag if desired.
  */
@@ -54,6 +55,8 @@ class OpenRouterIntegrationTest {
     // Cheapest image model found at the time of writing; override with OPENROUTER_IMAGE_TEST_MODEL.
     private val imageModel: String =
         resolveConfig("OPENROUTER_IMAGE_TEST_MODEL") ?: "black-forest-labs/flux.2-klein-4b"
+    // Opt-in on top of the key: see the class comment.
+    private val runImageGeneration: Boolean = resolveConfig("OPENROUTER_RUN_IMAGE_GENERATION").toBoolean()
     private val objectMapper = jacksonObjectMapper()
 
     private fun aiClient(): AiClient {
@@ -305,6 +308,7 @@ class OpenRouterIntegrationTest {
     @Test
     fun `generates a real image through the dedicated images endpoint`() {
         assumeTrue(apiKey != null, "OPENROUTER_API_KEY not set; skipping live OpenRouter test")
+        assumeTrue(runImageGeneration, "OPENROUTER_RUN_IMAGE_GENERATION not set; skipping the paid image generation")
 
         val response = skippingRateLimits {
             imageClient().generate(
