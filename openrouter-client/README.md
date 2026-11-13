@@ -20,7 +20,7 @@ Consumers are expected to be **Spring Boot apps** (the client uses `RestClient` 
 | `ImageDtos.kt` | `ImageRequest` (`n`, `resolution`, `aspect_ratio`, `quality`, `output_format`, `seed`, `input_references`, …), `ImageResponse`, and `ImageData` with `bytes` / `dataUrl` accessors. |
 | `TranscriptionDtos.kt` | `TranscriptionRequest` (`input_audio`, `language`, `temperature`) with an `ofBytes` builder, `TranscriptionResponse`, and `TranscriptionUsage` (duration/token counts, `cost`). |
 | `Usage.kt` | `Usage` / `PromptTokensDetails` — token counts, prompt-cache breakdown, and `cost`, implementing `CallUsage`. Shared by the chat and image endpoints. |
-| `ProviderPreferences.kt` | The provider-routing object (`zdr`, `only`, `order`, `ignore`, `sort`, `allow_fallbacks`), accepted identically by every endpoint. |
+| `ProviderPreferences.kt` | The provider-routing object (`zdr` and `data_collection`, both defaulting to the private side, plus `only`, `order`, `ignore`, `sort`, `allow_fallbacks`), accepted identically by every endpoint. |
 | `AiStreamEvents.kt` | `ChatStreamEvent` — the `ContentDelta` / `ReasoningDelta` / `ToolCallReady` / `Completed` union a `chatStream` collector sees — and `OpenRouterStreamException`. |
 | `AiStreamDtos.kt` | The SSE chunk/delta wire shapes. Internal plumbing for `chatStream`; you work with `ChatStreamEvent` instead. |
 | `ModelCapabilityService` | Fetches `/model/{slug}` capabilities for **chat** models (reasoning support, supported efforts, input/output modalities). Prefetches configured models at startup; caches in memory. Also lists the models with a zero-data-retention endpoint (`zdrModels()`, from `/endpoints/zdr`) and fails startup when a configured model has none (while `AiClientProperties.zeroDataRetention` is on; a failed lookup is only logged). |
@@ -267,7 +267,11 @@ caps?.supportsStreaming               // reported for model choice; the client c
 apart. A model missing from the cache returns `null`, which means *unknown*, not *unsupported*.
 
 Both capability services prefetch at `ApplicationReadyEvent` and are best-effort: a failed fetch logs
-and leaves the cache as it was rather than breaking boot.
+and leaves the cache as it was rather than breaking boot. `ModelCapabilityService`'s prefetch is
+ordered first among that event's listeners, so a consumer's own startup check on the same event sees
+the capabilities. It covers speech-to-text slugs too: OpenRouter serves them from `/model/{slug}`
+(input `audio`, output `transcription`) and lists them in `/endpoints/zdr`, so a transcription model
+can go in `configuredModels` and gets the zero-data-retention check like a chat model.
 
 For chat models that emit images *inline* in a completion — a different thing from an `/images`
 model — `ModelCapabilityService.supportsImageOutput(model)` reads `architecture.output_modalities`.
@@ -375,13 +379,16 @@ and **skipped** (not failed) when none is set, so it stays dormant in normal CI:
 ```bash
 export OPENROUTER_API_KEY=sk-or-...            # or put it in a git-ignored .env at the repo root
 # OPENROUTER_TEST_MODEL overrides the default openai/gpt-5-nano (needs structured-output + tool support)
+# OPENROUTER_RUN_IMAGE_GENERATION=true opts in to the (paid) image-generation test
 # OPENROUTER_IMAGE_TEST_MODEL overrides the default black-forest-labs/flux.2-klein-4b
 ./gradlew :openrouter-client:test --tests '*OpenRouterIntegrationTest'
 ```
 
-Note the image test **costs real money on every run** — cents rather than the fractions of a cent the
-text calls cost. The default is the cheapest image model found at the time of writing; weigh that
-before pointing `OPENROUTER_IMAGE_TEST_MODEL` elsewhere or wiring a key into CI.
+The image-generation test **costs real money on every run** — cents rather than the fractions of a
+cent the text calls cost — so a key alone doesn't run it: it is skipped unless
+`OPENROUTER_RUN_IMAGE_GENERATION=true` is set too, which CI doesn't do. Run it when touching the image
+path. The default is the cheapest image model found at the time of writing; weigh that before
+pointing `OPENROUTER_IMAGE_TEST_MODEL` elsewhere.
 
 ## Coordinates
 

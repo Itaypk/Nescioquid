@@ -98,8 +98,9 @@ class ImageClientTest {
             setOf("model", "prompt", "provider"),
             body!!.propertyNames().toSet(),
         )
-        // ...and provider itself carries only zdr, so the routing fields stay off the wire too.
-        assertEquals(setOf("zdr"), body.get("provider").propertyNames().asSequence().toSet())
+        // ...and provider itself carries only the two data policies, so the routing fields stay off the wire too.
+        assertEquals(setOf("zdr", "data_collection"), body.get("provider").propertyNames().asSequence().toSet())
+        assertEquals("deny", body.get("provider").get("data_collection").asString())
     }
 
     @Test
