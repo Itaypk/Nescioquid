@@ -25,6 +25,7 @@ Consumers are expected to be **Spring Boot apps** (the client uses `RestClient` 
 | `AiStreamDtos.kt` | The SSE chunk/delta wire shapes. Internal plumbing for `chatStream`; you work with `ChatStreamEvent` instead. |
 | `ModelCapabilityService` | Fetches `/model/{slug}` capabilities for **chat** models (reasoning support, supported efforts, input/output modalities). Prefetches configured models at startup; caches in memory. Also lists the models with a zero-data-retention endpoint (`zdrModels()`, from `/endpoints/zdr`) and fails startup when a configured model has none (while `AiClientProperties.zeroDataRetention` is on; a failed lookup is only logged). |
 | `ImageModelCapabilityService` | Fetches the `/images/models` listing for **image** models — a different endpoint with a different shape, including which parameters each model accepts and their legal values. One call describes every model. |
+| `ApiKeyClient` | Reads the key's own usage and spending limit from `GET /key` (`currentKey()`: `limit` / `limit_remaining` / `limit_reset`, daily–monthly `usage`, the `effective_budget` that blocks first, `expires_at`). Unaccounted and unretried, like `restClient`; a null `limit` means the key has no cap. For polling into metrics and alerting before the credit runs out. |
 | `AiClientProperties` | The minimal config contract (`apiKey` / `baseUrl` / `configuredModels`, plus optional timeouts and `zeroDataRetention`) you supply as a bean. |
 | `AiCallContext` | Per-call attribution carrier (user, conversation type, optional session/conversation ids). |
 | `tool/*` | `AiTool` / `ToolKind` / `ToolRegistry` — a function-tool abstraction and registry. |
@@ -81,7 +82,7 @@ fun aiClientProperties() = AiClientProperties(
     configuredModels = setOf("openai/gpt-oss-20b:free"),
 )
 
-// AiClient, ImageClient, OpenRouterTransport, ModelCapabilityService,
+// AiClient, ImageClient, OpenRouterTransport, ApiKeyClient, ModelCapabilityService,
 // ImageModelCapabilityService and ToolRegistry are @Component beans —
 // component-scan the package dev.itayp.nescioquid.openrouter.
 
