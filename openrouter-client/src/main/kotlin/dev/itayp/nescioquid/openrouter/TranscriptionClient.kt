@@ -28,6 +28,8 @@ class TranscriptionClient(private val transport: OpenRouterTransport) {
      * Blocking, and runs against its own [AiClientProperties.transcriptionReadTimeout] rather than the
      * chat read timeout, since a long recording can take a while to transcribe.
      */
-    fun transcribe(request: TranscriptionRequest, context: AiCallContext): TranscriptionResponse =
-        transport.call(context, request, AUDIO_TRANSCRIPTIONS_PATH, TranscriptionResponse::class.java)
+    fun transcribe(request: TranscriptionRequest, context: AiCallContext): TranscriptionResponse {
+        transport.requireOpenRouter("Transcription")
+        return transport.call(context, request, AUDIO_TRANSCRIPTIONS_PATH, TranscriptionResponse::class.java)
+    }
 }

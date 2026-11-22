@@ -46,6 +46,7 @@ class ImageModelCapabilityService(
     /** Fetch the image-model listing once the app is up. Never blocks or fails boot. */
     @EventListener(ApplicationReadyEvent::class)
     fun prefetch() {
+        if (properties.dialect != ApiDialect.OPENROUTER) return
         if (properties.apiKey.isBlank()) {
             log.info("AI API key not configured; skipping image model capability prefetch")
             return

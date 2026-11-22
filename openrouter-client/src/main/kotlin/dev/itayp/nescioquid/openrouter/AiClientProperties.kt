@@ -3,7 +3,9 @@ package dev.itayp.nescioquid.openrouter
 import java.time.Duration
 
 /**
- * The minimal configuration the OpenRouter client core needs. The library classes ([AiClient],
+ * The minimal configuration the OpenRouter client core needs. [apiKey] may be blank for an
+ * [ApiDialect.OPENAI_COMPATIBLE] server that needs no key (a local one, say); no `Authorization`
+ * header is sent then. The library classes ([AiClient],
  * [ModelCapabilityService]) depend only on this contract; the consumer supplies it as a bean
  * (typically derived from its own application config).
  */
@@ -12,11 +14,20 @@ data class AiClientProperties(
     val baseUrl: String,
     /** Model slugs to prefetch capabilities for at startup. */
     val configuredModels: Set<String>,
+    /** The API at [baseUrl]. Anything but [ApiDialect.OPENROUTER] turns the OpenRouter-only features off. */
+    val dialect: ApiDialect = ApiDialect.OPENROUTER,
+    /**
+     * Capabilities stated by the consumer rather than fetched, keyed by model slug. They take
+     * precedence over OpenRouter's `/model/{slug}` (a declared model isn't fetched), and under
+     * [ApiDialect.OPENAI_COMPATIBLE], which has no capability endpoint, they are the only source.
+     */
+    val declaredCapabilities: Map<String, ModelCapabilities> = emptyMap(),
     /**
      * Whether the consumer routes its calls with zero data retention (`provider.zdr`). The client
      * doesn't apply this itself — [ProviderPreferences.zdr] does, per request, and defaults to on as
      * this does. It tells the startup prefetch to check that every model in [configuredModels] has
      * a ZDR endpoint (and fail startup if one hasn't), since OpenRouter refuses to route such a model.
+     * Ignored under [ApiDialect.OPENAI_COMPATIBLE].
      */
     val zeroDataRetention: Boolean = true,
     /** Max time to establish the TCP connection. */

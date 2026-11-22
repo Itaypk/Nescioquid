@@ -33,6 +33,8 @@ class ImageClient(private val transport: OpenRouterTransport) {
      * longer than a text completion, which is why it runs against its own
      * [AiClientProperties.imageReadTimeout] rather than the chat read timeout.
      */
-    fun generate(request: ImageRequest, context: AiCallContext): ImageResponse =
-        transport.call(context, request, IMAGES_PATH, ImageResponse::class.java)
+    fun generate(request: ImageRequest, context: AiCallContext): ImageResponse {
+        transport.requireOpenRouter("Image generation")
+        return transport.call(context, request, IMAGES_PATH, ImageResponse::class.java)
+    }
 }

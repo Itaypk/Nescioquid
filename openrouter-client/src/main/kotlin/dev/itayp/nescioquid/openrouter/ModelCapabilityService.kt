@@ -57,6 +57,8 @@ class ModelCapabilityService(
     /**
      * Prefetch capabilities for every configured model once the app is up. Best-effort, except for
      * the zero-data-retention check, which throws (and so fails startup) on a misconfigured model.
+     * [AiClientProperties.declaredCapabilities] are taken as given; under
+     * [ApiDialect.OPENAI_COMPATIBLE] they are all there is, and neither fetch nor check runs.
      *
      * Ordered first among `ApplicationReadyEvent` listeners, so a consumer's own listener (a startup
      * check that a configured model can do its job, say) sees the capabilities. Unordered listeners
@@ -65,11 +67,16 @@ class ModelCapabilityService(
     @EventListener(ApplicationReadyEvent::class)
     @Order(Ordered.HIGHEST_PRECEDENCE)
     fun prefetch() {
+        capabilities.putAll(properties.declaredCapabilities)
+        if (properties.dialect != ApiDialect.OPENROUTER) {
+            log.info("{} API dialect: using declared capabilities only, for {}", properties.dialect, properties.declaredCapabilities.keys)
+            return
+        }
         if (properties.apiKey.isBlank()) {
             log.info("AI API key not configured; skipping model capability prefetch")
             return
         }
-        for (model in properties.configuredModels) {
+        for (model in properties.configuredModels - properties.declaredCapabilities.keys) {
             fetch(model)
         }
         if (properties.zeroDataRetention) checkZeroDataRetention()

@@ -16,12 +16,15 @@ import java.time.Instant
 class ApiKeyClient(private val transport: OpenRouterTransport) {
 
     /** The key's current usage and limit. Throws when OpenRouter can't be reached or rejects the key. */
-    fun currentKey(): ApiKeyInfo = transport.restClient.get()
-        .uri("/key")
-        .retrieve()
-        .body(KeyResponse::class.java)
-        ?.data
-        ?: error("OpenRouter answered GET /key with no data")
+    fun currentKey(): ApiKeyInfo {
+        transport.requireOpenRouter("The key status endpoint")
+        return transport.restClient.get()
+            .uri("/key")
+            .retrieve()
+            .body(KeyResponse::class.java)
+            ?.data
+            ?: error("OpenRouter answered GET /key with no data")
+    }
 }
 
 /**
