@@ -9,11 +9,11 @@ import java.time.Instant
  * Reads the API key's own usage and spending limit from OpenRouter's `GET /key`.
  *
  * Not an accounted call: it costs nothing and doesn't count toward any limit, so it goes through
- * [OpenRouterTransport.restClient] with no gate, listener or retries. A failure throws; a consumer
+ * [AiTransport.restClient] with no gate, listener or retries. A failure throws; a consumer
  * polling this for metrics decides for itself what a missed reading means.
  */
 @Component
-class ApiKeyClient(private val transport: OpenRouterTransport) {
+class ApiKeyClient(private val transport: AiTransport) {
 
     /** The key's current usage and limit. Throws when OpenRouter can't be reached or rejects the key. */
     fun currentKey(): ApiKeyInfo {

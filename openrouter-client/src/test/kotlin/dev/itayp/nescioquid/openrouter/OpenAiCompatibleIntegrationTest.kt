@@ -31,7 +31,7 @@ class OpenAiCompatibleIntegrationTest {
     fun requireServer() = assumeTrue(baseUrl != null && model != null, "no OpenAI-compatible test server configured")
 
     private fun client() = AiClient(
-        OpenRouterTransport(
+        AiTransport(
             properties = AiClientProperties(
                 apiKey = resolveConfig("OPENAI_COMPATIBLE_TEST_API_KEY").orEmpty(),
                 baseUrl = baseUrl!!,

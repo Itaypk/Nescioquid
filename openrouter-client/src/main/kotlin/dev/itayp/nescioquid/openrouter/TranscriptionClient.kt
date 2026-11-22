@@ -7,7 +7,7 @@ import org.springframework.stereotype.Component
  *
  * Kept separate from [AiClient] for the same reason as [ImageClient]: `/audio/transcriptions` is its
  * own endpoint with its own request and response shapes. Everything the clients genuinely share —
- * auth, timeouts, the retry policy, and the gate/listener seams — lives in [OpenRouterTransport], so a
+ * auth, timeouts, the retry policy, and the gate/listener seams — lives in [AiTransport], so a
  * call here is accounted exactly as a chat or image call is.
  *
  * ```kotlin
@@ -19,7 +19,7 @@ import org.springframework.stereotype.Component
  * ```
  */
 @Component
-class TranscriptionClient(private val transport: OpenRouterTransport) {
+class TranscriptionClient(private val transport: AiTransport) {
 
     /**
      * Transcribes one audio clip. The gate runs first and may throw to refuse the call; the listener

@@ -11,7 +11,7 @@ Consumers are expected to be **Spring Boot apps** (the client uses `RestClient` 
 
 | Class | Role |
 | --- | --- |
-| `OpenRouterTransport` | The shared transport: bearer auth, timeouts, 3-attempt exponential backoff on 5xx/429, and the gate/listener seams that make a call an *accounted* call. Every modality client delegates to it, so they share connection pools and one definition of "one call". Its `restClient` is the same pre-configured client (base URL, bearer auth, timeouts), public for endpoints this library doesn't wrap; calls through it aren't accounted or retried. |
+| `AiTransport` | The shared transport: bearer auth, timeouts, 3-attempt exponential backoff on 5xx/429, and the gate/listener seams that make a call an *accounted* call. Every modality client delegates to it, so they share connection pools and one definition of "one call". Its `restClient` is the same pre-configured client (base URL, bearer auth, timeouts), public for endpoints this library doesn't wrap; calls through it aren't accounted or retried. |
 | `AiClient` | Chat completions. `chat(request, context)` is the blocking call; `chatStream(request, context)` is the streaming counterpart, returning a cold `Flow<ChatStreamEvent>`. The `request` is the source of truth for the wire, including `reasoning`. |
 | `ImageClient` | Image generation via the dedicated `POST /images` endpoint. `generate(request, context)`, accounted exactly as a chat call is. |
 | `TranscriptionClient` | Speech-to-text via the dedicated `POST /audio/transcriptions` endpoint. `transcribe(request, context)`, accounted exactly as a chat call is. |
@@ -83,7 +83,7 @@ fun aiClientProperties() = AiClientProperties(
     configuredModels = setOf("openai/gpt-oss-20b:free"),
 )
 
-// AiClient, ImageClient, OpenRouterTransport, ApiKeyClient, ModelCapabilityService,
+// AiClient, ImageClient, AiTransport, ApiKeyClient, ModelCapabilityService,
 // ImageModelCapabilityService and ToolRegistry are @Component beans —
 // component-scan the package dev.itayp.nescioquid.openrouter.
 

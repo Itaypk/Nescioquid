@@ -79,7 +79,7 @@ class OpenRouterIntegrationTest {
         return ImageClient(transport(properties))
     }
 
-    private fun transport(properties: AiClientProperties) = OpenRouterTransport(
+    private fun transport(properties: AiClientProperties) = AiTransport(
         properties = properties,
         callGate = { _, _ -> },
         callListener = object : AiCallListener {

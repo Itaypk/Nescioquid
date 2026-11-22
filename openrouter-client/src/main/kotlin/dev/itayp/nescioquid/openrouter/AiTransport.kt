@@ -29,15 +29,15 @@ internal fun timeoutRequestFactory(connectTimeout: Duration, readTimeout: Durati
     }
 
 /**
- * Builds a `RestClient` pointed at OpenRouter with bearer auth (none when the key is blank, which a
- * keyless OpenAI-compatible server accepts and OpenRouter rejects either way).
+ * Builds a `RestClient` pointed at the API's base URL with bearer auth (none when the key is blank,
+ * which a keyless OpenAI-compatible server accepts and OpenRouter rejects either way).
  *
  * [builder] null means "build our own", which is what carries the timeouts. A builder passed in owns
  * its transport config and is used as given — overriding its request factory would replace whatever
  * it was supplied for (a `MockRestServiceServer`, a tuned HTTP client), so [readTimeout] is ignored
  * in that case.
  */
-internal fun openRouterRestClient(
+internal fun aiRestClient(
     properties: AiClientProperties,
     builder: RestClient.Builder?,
     readTimeout: Duration,
@@ -110,8 +110,9 @@ internal inline fun <T> retrying(
 }
 
 /**
- * The shared OpenRouter transport: connection setup, the retry policy, and the [AiCallGate] /
- * [AiCallListener] seams that make a call an *accounted* call.
+ * The shared transport to OpenRouter or another OpenAI-compatible API ([ApiDialect]): connection
+ * setup, the retry policy, and the [AiCallGate] / [AiCallListener] seams that make a call an
+ * *accounted* call. (Named `OpenRouterTransport` up to 0.16.0.)
  *
  * One bean serves every modality client ([AiClient], [ImageClient], [TranscriptionClient], and
  * whatever `/videos` or `/embeddings` clients follow), so they share connection pools and — more
@@ -119,14 +120,14 @@ internal inline fun <T> retrying(
  * just the endpoint path plus its own DTOs.
  */
 @Component
-class OpenRouterTransport(
+class AiTransport(
     private val properties: AiClientProperties,
     private val callGate: AiCallGate,
     private val callListener: AiCallListener,
     // Injectable so tests can bind a MockRestServiceServer, as ModelCapabilityService already does.
     restClientBuilder: RestClient.Builder? = null,
 ) {
-    private val log = LoggerFactory.getLogger(OpenRouterTransport::class.java)
+    private val log = LoggerFactory.getLogger(AiTransport::class.java)
 
     /** The API the transport talks to; the modality clients shape their requests by it. */
     val dialect: ApiDialect = properties.dialect
@@ -140,14 +141,14 @@ class OpenRouterTransport(
     }
 
     /**
-     * A [RestClient] preconfigured for OpenRouter — base URL, bearer auth and the blocking path's
+     * A [RestClient] preconfigured for the API — base URL, bearer auth and the blocking path's
      * timeouts — for endpoints this library doesn't wrap. Calls made through it are *not* accounted:
      * no [AiCallGate], no [AiCallListener], no retries.
      *
      * It always sends the API key. That is harmless on OpenRouter's public endpoints (same host, and
      * they ignore it), and saves callers from having to know which endpoints need it.
      */
-    val restClient: RestClient = openRouterRestClient(properties, restClientBuilder, properties.readTimeout)
+    val restClient: RestClient = aiRestClient(properties, restClientBuilder, properties.readTimeout)
 
     // Image generation routinely outruns the read timeout tuned for text completion, so it gets its
     // own client. As with streamClient below, an injected builder owns its transport config, leaving
@@ -155,7 +156,7 @@ class OpenRouterTransport(
     private val imageClient = if (restClientBuilder != null) {
         restClient
     } else {
-        openRouterRestClient(properties, null, properties.imageReadTimeout)
+        aiRestClient(properties, null, properties.imageReadTimeout)
     }
 
     // Same reasoning as imageClient: transcription gets its own timeout budget rather than sharing
@@ -163,7 +164,7 @@ class OpenRouterTransport(
     private val transcriptionClient = if (restClientBuilder != null) {
         restClient
     } else {
-        openRouterRestClient(properties, null, properties.transcriptionReadTimeout)
+        aiRestClient(properties, null, properties.transcriptionReadTimeout)
     }
 
     /**
@@ -173,7 +174,7 @@ class OpenRouterTransport(
     val streamClient: RestClient = if (restClientBuilder != null) {
         restClient
     } else {
-        openRouterRestClient(properties, null, properties.streamIdleTimeout)
+        aiRestClient(properties, null, properties.streamIdleTimeout)
     }
 
     /**

@@ -20,11 +20,11 @@ import tools.jackson.module.kotlin.jacksonObjectMapper
 
 /**
  * The chat-completions client. Transport concerns — connection setup, the retry policy, and the
- * [AiCallGate] / [AiCallListener] seams — live in [OpenRouterTransport], which every modality client
+ * [AiCallGate] / [AiCallListener] seams — live in [AiTransport], which every modality client
  * shares; this class carries only what is specific to `/chat/completions`.
  */
 @Component
-class AiClient(private val transport: OpenRouterTransport) {
+class AiClient(private val transport: AiTransport) {
     private val log = LoggerFactory.getLogger(AiClient::class.java)
 
     // Private to the streaming path: chunks are parsed off the SSE body ourselves rather than

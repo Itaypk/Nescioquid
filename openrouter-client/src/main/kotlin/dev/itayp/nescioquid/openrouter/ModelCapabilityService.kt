@@ -45,7 +45,7 @@ class ModelCapabilityService(
 ) {
     private val log = LoggerFactory.getLogger(ModelCapabilityService::class.java)
 
-    private val client: RestClient = openRouterRestClient(properties, restClientBuilder, properties.readTimeout)
+    private val client: RestClient = aiRestClient(properties, restClientBuilder, properties.readTimeout)
 
     // model slug -> capabilities. Absent key means "unknown" (fetch failed or not attempted).
     private val capabilities = ConcurrentHashMap<String, ModelCapabilities>()

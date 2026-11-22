@@ -37,10 +37,10 @@ class OpenAiCompatibleDialectTest {
         declaredCapabilities = mapOf("llama3.3" to ModelCapabilities(supportsReasoning = true, inputModalities = listOf("text", "image"))),
     )
 
-    private fun transport(properties: AiClientProperties): Pair<OpenRouterTransport, MockRestServiceServer> {
+    private fun transport(properties: AiClientProperties): Pair<AiTransport, MockRestServiceServer> {
         val builder = RestClient.builder()
         val server = MockRestServiceServer.bindTo(builder).build()
-        return OpenRouterTransport(properties, RecordingGate(), RecordingListener(), builder) to server
+        return AiTransport(properties, RecordingGate(), RecordingListener(), builder) to server
     }
 
     private fun capturingRequest(into: (MockClientHttpRequest, JsonNode) -> Unit) = RequestMatcher { request ->
