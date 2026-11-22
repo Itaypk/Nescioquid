@@ -20,11 +20,11 @@ import tools.jackson.module.kotlin.jacksonObjectMapper
 
 /**
  * The chat-completions client. Transport concerns — connection setup, the retry policy, and the
- * [AiCallGate] / [AiCallListener] seams — live in [OpenRouterTransport], which every modality client
+ * [AiCallGate] / [AiCallListener] seams — live in [AiTransport], which every modality client
  * shares; this class carries only what is specific to `/chat/completions`.
  */
 @Component
-class AiClient(private val transport: OpenRouterTransport) {
+class AiClient(private val transport: AiTransport) {
     private val log = LoggerFactory.getLogger(AiClient::class.java)
 
     // Private to the streaming path: chunks are parsed off the SSE body ourselves rather than
@@ -40,7 +40,7 @@ class AiClient(private val transport: OpenRouterTransport) {
      * recorded for both success and failure.
      */
     fun chat(request: ChatRequest, context: AiCallContext): ChatResponse =
-        transport.call(context, request, COMPLETIONS_PATH, ChatResponse::class.java)
+        transport.call(context, request, COMPLETIONS_PATH, ChatResponse::class.java, wireBody(request))
 
     /**
      * The streaming counterpart of [chat]: emits the model's output as it is generated, then a
@@ -102,7 +102,7 @@ class AiClient(private val transport: OpenRouterTransport) {
             ) {
                 val attempt = ChatStreamAccumulator()
                 log.debug("Opening chat stream to AI API: model=${request.model}, messages=${request.messages.size}")
-                transport.openStream(streamingRequest, COMPLETIONS_PATH).use { response ->
+                transport.openStream(streamingRequest, COMPLETIONS_PATH, wireBody(streamingRequest)).use { response ->
                     for (payload in sseDataLines(response.body.bufferedReader())) {
                         currentCoroutineContext().ensureActive()
                         attempt.accept(parseChunk(payload)).forEach { emitted = true; emit(Result.success(it)) }
@@ -140,6 +140,12 @@ class AiClient(private val transport: OpenRouterTransport) {
         // completion. Handing each event over directly keeps the collector's view and the call's
         // state in step, and makes cancellation take effect at the next event.
     }.flowOn(Dispatchers.IO).buffer(Channel.RENDEZVOUS).map { it.getOrThrow() }
+
+    /** What goes on the wire for [request] in the transport's dialect. */
+    private fun wireBody(request: ChatRequest): Any = when (transport.dialect) {
+        ApiDialect.OPENROUTER -> request
+        ApiDialect.OPENAI_COMPATIBLE -> request.toOpenAiCompatible()
+    }
 
     private fun parseChunk(payload: String): ChatChunk =
         try {

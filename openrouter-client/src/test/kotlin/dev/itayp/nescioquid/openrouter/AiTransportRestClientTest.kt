@@ -9,7 +9,7 @@ import org.springframework.test.web.client.response.MockRestResponseCreators.wit
 import org.springframework.web.client.RestClient
 import kotlin.test.assertEquals
 
-class OpenRouterTransportRestClientTest {
+class AiTransportRestClientTest {
 
     @Test
     fun `restClient reaches unwrapped endpoints with the base URL and API key, unaccounted`() {
@@ -17,7 +17,7 @@ class OpenRouterTransportRestClientTest {
         val server = MockRestServiceServer.bindTo(builder).build()
         val gate = RecordingGate()
         val listener = RecordingListener()
-        val transport = OpenRouterTransport(testProperties(), gate, listener, builder)
+        val transport = AiTransport(testProperties(), gate, listener, builder)
         server.expect(requestTo("$TEST_BASE_URL/credits"))
             .andExpect(header("Authorization", "Bearer k"))
             .andRespond(withSuccess("""{"data":{"total_credits":10}}""", MediaType.APPLICATION_JSON))

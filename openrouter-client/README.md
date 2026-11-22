@@ -11,7 +11,7 @@ Consumers are expected to be **Spring Boot apps** (the client uses `RestClient` 
 
 | Class | Role |
 | --- | --- |
-| `OpenRouterTransport` | The shared transport: bearer auth, timeouts, 3-attempt exponential backoff on 5xx/429, and the gate/listener seams that make a call an *accounted* call. Every modality client delegates to it, so they share connection pools and one definition of "one call". Its `restClient` is the same pre-configured client (base URL, bearer auth, timeouts), public for endpoints this library doesn't wrap; calls through it aren't accounted or retried. |
+| `AiTransport` | The shared transport: bearer auth, timeouts, 3-attempt exponential backoff on 5xx/429, and the gate/listener seams that make a call an *accounted* call. Every modality client delegates to it, so they share connection pools and one definition of "one call". Its `restClient` is the same pre-configured client (base URL, bearer auth, timeouts), public for endpoints this library doesn't wrap; calls through it aren't accounted or retried. |
 | `AiClient` | Chat completions. `chat(request, context)` is the blocking call; `chatStream(request, context)` is the streaming counterpart, returning a cold `Flow<ChatStreamEvent>`. The `request` is the source of truth for the wire, including `reasoning`. |
 | `ImageClient` | Image generation via the dedicated `POST /images` endpoint. `generate(request, context)`, accounted exactly as a chat call is. |
 | `TranscriptionClient` | Speech-to-text via the dedicated `POST /audio/transcriptions` endpoint. `transcribe(request, context)`, accounted exactly as a chat call is. |
@@ -26,7 +26,8 @@ Consumers are expected to be **Spring Boot apps** (the client uses `RestClient` 
 | `ModelCapabilityService` | Fetches `/model/{slug}` capabilities for **chat** models (reasoning support, supported efforts, input/output modalities). Prefetches configured models at startup; caches in memory. Also lists the models with a zero-data-retention endpoint (`zdrModels()`, from `/endpoints/zdr`) and fails startup when a configured model has none (while `AiClientProperties.zeroDataRetention` is on; a failed lookup is only logged). |
 | `ImageModelCapabilityService` | Fetches the `/images/models` listing for **image** models — a different endpoint with a different shape, including which parameters each model accepts and their legal values. One call describes every model. |
 | `ApiKeyClient` | Reads the key's own usage and spending limit from `GET /key` (`currentKey()`: `limit` / `limit_remaining` / `limit_reset`, daily–monthly `usage`, the `effective_budget` that blocks first, `expires_at`). Unaccounted and unretried, like `restClient`; a null `limit` means the key has no cap. For polling into metrics and alerting before the credit runs out. |
-| `AiClientProperties` | The minimal config contract (`apiKey` / `baseUrl` / `configuredModels`, plus optional timeouts and `zeroDataRetention`) you supply as a bean. |
+| `AiClientProperties` | The minimal config contract (`apiKey` / `baseUrl` / `configuredModels`, plus optional timeouts, `zeroDataRetention`, `dialect` and `declaredCapabilities`) you supply as a bean. |
+| `ApiDialect` / `OpenAiCompatibleDtos.kt` | `OPENROUTER` (default) or `OPENAI_COMPATIBLE`, and the extension-free wire shape chat requests take in the latter. See [Other OpenAI-compatible APIs](#other-openai-compatible-apis). |
 | `AiCallContext` | Per-call attribution carrier (user, conversation type, optional session/conversation ids). |
 | `tool/*` | `AiTool` / `ToolKind` / `ToolRegistry` — a function-tool abstraction and registry. |
 | `AssistantJson.kt` | `extractJsonObjectSpan` / `parseAssistantJsonResponse` — pull a JSON object out of an LLM response, tolerating surrounding prose or code fences. |
@@ -82,7 +83,7 @@ fun aiClientProperties() = AiClientProperties(
     configuredModels = setOf("openai/gpt-oss-20b:free"),
 )
 
-// AiClient, ImageClient, OpenRouterTransport, ApiKeyClient, ModelCapabilityService,
+// AiClient, ImageClient, AiTransport, ApiKeyClient, ModelCapabilityService,
 // ImageModelCapabilityService and ToolRegistry are @Component beans —
 // component-scan the package dev.itayp.nescioquid.openrouter.
 
@@ -114,6 +115,35 @@ reads nothing but `contentText` sees an inexplicably silent model. Three fields 
 
 Worth logging all three whenever a turn comes back with neither content nor tool calls; without them
 that failure is indistinguishable from a model that simply chose to say nothing.
+
+## Other OpenAI-compatible APIs
+
+Set `dialect = ApiDialect.OPENAI_COMPATIBLE` to point the chat client at any server that speaks the
+OpenAI chat-completions API: OpenAI itself, a provider's OpenAI-compatible endpoint, or a
+self-hosted one (vLLM, Ollama, llama.cpp). The DTOs don't change; what does:
+
+| | `OPENROUTER` | `OPENAI_COMPATIBLE` |
+| --- | --- | --- |
+| `provider` (ZDR, data collection, routing), `plugins` | sent | dropped |
+| `reasoning.effort` | `reasoning` object | `reasoning_effort` (`max_tokens` / `exclude` dropped) |
+| Stream usage | `usage.include` | `stream_options.include_usage` |
+| Capabilities | fetched from `/model/{slug}` (unless declared) | `declaredCapabilities` only |
+| ZDR startup check | when `zeroDataRetention` is on | never: retention is the provider's contract |
+| `ImageClient`, `TranscriptionClient`, `ApiKeyClient` | available | throw `IllegalStateException` |
+| Blank `apiKey` | AI calls fail | no `Authorization` header (keyless local servers) |
+
+Messages are sent as given, so leave `ChatMessage.cacheable` out: `cache_control` is an OpenRouter
+pass-through that a strict server may reject.
+
+```kotlin
+AiClientProperties(
+    apiKey = "",
+    baseUrl = "http://localhost:11434/v1",
+    configuredModels = setOf("llama3.3"),
+    dialect = ApiDialect.OPENAI_COMPATIBLE,
+    declaredCapabilities = mapOf("llama3.3" to ModelCapabilities(supportsReasoning = false)),
+)
+```
 
 ## Streaming
 

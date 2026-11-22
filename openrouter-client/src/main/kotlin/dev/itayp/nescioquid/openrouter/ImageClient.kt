@@ -9,7 +9,7 @@ import org.springframework.stereotype.Component
  * request and response shapes, same as [TranscriptionClient]'s `/audio/transcriptions`, and the
  * modality endpoints still to come (`/videos`, `/embeddings`, `/audio/speech`) are each another one.
  * Everything the clients genuinely share — auth, timeouts, the retry policy, and the gate/listener
- * seams — lives in [OpenRouterTransport], so a call here is accounted exactly as a chat call is.
+ * seams — lives in [AiTransport], so a call here is accounted exactly as a chat call is.
  *
  * Which parameters a given model accepts, and their legal values, are reported per model by
  * [ImageModelCapabilityService]; OpenRouter rejects an unsupported parameter rather than ignoring it.
@@ -23,7 +23,7 @@ import org.springframework.stereotype.Component
  * ```
  */
 @Component
-class ImageClient(private val transport: OpenRouterTransport) {
+class ImageClient(private val transport: AiTransport) {
 
     /**
      * Generates one or more images. The gate runs first and may throw to refuse the call; the
@@ -33,6 +33,8 @@ class ImageClient(private val transport: OpenRouterTransport) {
      * longer than a text completion, which is why it runs against its own
      * [AiClientProperties.imageReadTimeout] rather than the chat read timeout.
      */
-    fun generate(request: ImageRequest, context: AiCallContext): ImageResponse =
-        transport.call(context, request, IMAGES_PATH, ImageResponse::class.java)
+    fun generate(request: ImageRequest, context: AiCallContext): ImageResponse {
+        transport.requireOpenRouter("Image generation")
+        return transport.call(context, request, IMAGES_PATH, ImageResponse::class.java)
+    }
 }

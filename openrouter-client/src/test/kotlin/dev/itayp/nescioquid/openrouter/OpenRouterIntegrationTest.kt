@@ -79,7 +79,7 @@ class OpenRouterIntegrationTest {
         return ImageClient(transport(properties))
     }
 
-    private fun transport(properties: AiClientProperties) = OpenRouterTransport(
+    private fun transport(properties: AiClientProperties) = AiTransport(
         properties = properties,
         callGate = { _, _ -> },
         callListener = object : AiCallListener {
@@ -345,7 +345,7 @@ class OpenRouterIntegrationTest {
         assertTrue(caps.outputModalities.contains("image"), "expected $imageModel to output images")
     }
 
-    private companion object {
+    internal companion object {
         /** Resolve a value from the process environment, falling back to a `.env` file. */
         fun resolveConfig(key: String): String? =
             System.getenv(key)?.takeIf { it.isNotBlank() } ?: dotenv()[key]

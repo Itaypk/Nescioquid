@@ -38,7 +38,7 @@ class ImageModelCapabilityService(
 ) {
     private val log = LoggerFactory.getLogger(ImageModelCapabilityService::class.java)
 
-    private val client: RestClient = openRouterRestClient(properties, restClientBuilder, properties.readTimeout)
+    private val client: RestClient = aiRestClient(properties, restClientBuilder, properties.readTimeout)
 
     // model slug -> capabilities. Empty means "unknown" (fetch failed or not attempted).
     private val capabilities = ConcurrentHashMap<String, ImageModelCapabilities>()
@@ -46,6 +46,7 @@ class ImageModelCapabilityService(
     /** Fetch the image-model listing once the app is up. Never blocks or fails boot. */
     @EventListener(ApplicationReadyEvent::class)
     fun prefetch() {
+        if (properties.dialect != ApiDialect.OPENROUTER) return
         if (properties.apiKey.isBlank()) {
             log.info("AI API key not configured; skipping image model capability prefetch")
             return

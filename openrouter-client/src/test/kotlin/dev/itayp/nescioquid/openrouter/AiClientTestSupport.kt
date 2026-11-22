@@ -75,10 +75,10 @@ class TestTranscriptionClient(
 )
 
 /** A transport bound to a [MockRestServiceServer], which all four of its clients then share. */
-private fun testTransport(gate: RecordingGate, listener: RecordingListener): Pair<OpenRouterTransport, MockRestServiceServer> {
+private fun testTransport(gate: RecordingGate, listener: RecordingListener): Pair<AiTransport, MockRestServiceServer> {
     val builder = RestClient.builder()
     val server = MockRestServiceServer.bindTo(builder).build()
-    return OpenRouterTransport(testProperties(), gate, listener, builder) to server
+    return AiTransport(testProperties(), gate, listener, builder) to server
 }
 
 fun testClient(gate: RecordingGate = RecordingGate(), listener: RecordingListener = RecordingListener()): TestClient {

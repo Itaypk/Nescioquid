@@ -55,7 +55,7 @@ class AiClientStreamTimeoutTest {
         streamIdleTimeout: Duration,
         listener: RecordingListener = RecordingListener(),
     ) = AiClient(
-        OpenRouterTransport(
+        AiTransport(
             properties = AiClientProperties(
                 apiKey = "k",
                 baseUrl = "http://127.0.0.1:${server.address.port}",

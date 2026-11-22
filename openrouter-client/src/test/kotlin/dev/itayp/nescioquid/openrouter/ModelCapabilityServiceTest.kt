@@ -23,6 +23,7 @@ class ModelCapabilityServiceTest {
         apiKey: String = "k",
         models: Set<String> = emptySet(),
         zeroDataRetention: Boolean = false,
+        declared: Map<String, ModelCapabilities> = emptyMap(),
     ): Pair<ModelCapabilityService, MockRestServiceServer> {
         val builder = RestClient.builder()
         val server = MockRestServiceServer.bindTo(builder).build()
@@ -31,6 +32,7 @@ class ModelCapabilityServiceTest {
             baseUrl = "https://openrouter.ai/api/v1",
             configuredModels = models,
             zeroDataRetention = zeroDataRetention,
+            declaredCapabilities = declared,
         )
         return ModelCapabilityService(properties, builder) to server
     }
@@ -240,6 +242,20 @@ class ModelCapabilityServiceTest {
         server.expect(requestTo("https://openrouter.ai/api/v1/endpoints/zdr")).andRespond(withServerError())
 
         assertFailsWith<Exception> { svc.zdrModels() }
+    }
+
+    @Test
+    fun `a declared model isn't fetched, and its declared capabilities win`() {
+        val declared = ModelCapabilities(supportsReasoning = false, inputModalities = listOf("text", "image"))
+        val (svc, server) = service(models = setOf("a/declared", "b/fetched"), declared = mapOf("a/declared" to declared))
+        server.expect(requestTo("https://openrouter.ai/api/v1/model/b/fetched"))
+            .andRespond(withSuccess("""{"data":{"supported_parameters":["reasoning"]}}""", MediaType.APPLICATION_JSON))
+
+        svc.prefetch()
+
+        server.verify()
+        assertEquals(declared, svc.get("a/declared"))
+        assertTrue(svc.supportsReasoning("b/fetched"))
     }
 
     @Test

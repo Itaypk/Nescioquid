@@ -22,7 +22,7 @@ class ApiKeyClientTest {
     private fun client(): Pair<ApiKeyClient, MockRestServiceServer> {
         val builder = RestClient.builder()
         val server = MockRestServiceServer.bindTo(builder).build()
-        val transport = OpenRouterTransport(testProperties(), RecordingGate(), RecordingListener(), builder)
+        val transport = AiTransport(testProperties(), RecordingGate(), RecordingListener(), builder)
         return ApiKeyClient(transport) to server
     }
 
