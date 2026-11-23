@@ -17,7 +17,9 @@ import kotlin.test.assertTrue
  * is accepted, and what comes back parses — blocking, with a tool, and streamed with usage.
  *
  * Skipped unless `OPENAI_COMPATIBLE_TEST_BASE_URL` and `OPENAI_COMPATIBLE_TEST_MODEL` are set (in the
- * environment or `.env`), with an optional `OPENAI_COMPATIBLE_TEST_API_KEY`. A local Ollama is the
+ * environment or `.env`), with an optional `OPENAI_COMPATIBLE_TEST_API_KEY`, and an optional
+ * `OPENAI_COMPATIBLE_TEST_REASONING_EFFORT` sent as `reasoning_effort` (OpenAI's newer reasoning
+ * models need `none` to accept the tool in the tool test). A local Ollama is the
  * cheapest target: `ollama pull qwen2.5:0.5b`, then `http://localhost:11434/v1` and `qwen2.5:0.5b`.
  */
 @Tag("integration")
@@ -26,6 +28,7 @@ class OpenAiCompatibleIntegrationTest {
 
     private val baseUrl = resolveConfig("OPENAI_COMPATIBLE_TEST_BASE_URL")
     private val model = resolveConfig("OPENAI_COMPATIBLE_TEST_MODEL")
+    private val reasoningEffort = resolveConfig("OPENAI_COMPATIBLE_TEST_REASONING_EFFORT")
 
     @BeforeEach
     fun requireServer() = assumeTrue(baseUrl != null && model != null, "no OpenAI-compatible test server configured")
@@ -54,6 +57,7 @@ class OpenAiCompatibleIntegrationTest {
         messages = listOf(ChatMessage("user", prompt)),
         tools = tools,
         maxTokens = 200,
+        reasoning = reasoningEffort?.let { ReasoningConfig(effort = it) },
         plugins = listOf(PluginConfig.pdfEngine(PdfEngine.NATIVE)),
     )
 
