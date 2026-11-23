@@ -19,8 +19,9 @@ enum class ApiDialect {
      * - Nothing is fetched from OpenRouter's `/model/{slug}`, `/endpoints/zdr` or `/images/models`:
      *   [ModelCapabilityService] knows only [AiClientProperties.declaredCapabilities], and
      *   zero data retention can't be checked or requested, so it is the provider's contract to keep.
-     * - [ImageClient], [TranscriptionClient] and [ApiKeyClient] speak OpenRouter-only request shapes
-     *   or endpoints, and refuse to run.
+     * - [TranscriptionClient] sends OpenAI's multipart form rather than OpenRouter's JSON body.
+     * - [ImageClient] and [ApiKeyClient] speak OpenRouter-only request shapes or endpoints, and refuse
+     *   to run.
      */
     OPENAI_COMPATIBLE,
 }
