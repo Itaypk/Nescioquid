@@ -115,10 +115,39 @@ class OpenAiCompatibleDialectTest {
     }
 
     @Test
+    fun `transcription goes as OpenAI's multipart form, without OpenRouter's provider preferences`() {
+        val (transport, server) = transport(properties())
+        var contentType: String? = null
+        var body = ""
+        server.expect(requestTo("$baseUrl/audio/transcriptions"))
+            .andExpect { req ->
+                val mock = req as MockClientHttpRequest
+                contentType = mock.headers.contentType?.toString()
+                body = mock.bodyAsString
+            }
+            .andRespond(withSuccess("""{"text":"buy milk","usage":{"type":"duration","seconds":2}}""", MediaType.APPLICATION_JSON))
+
+        val request = testTranscriptionRequest(model = "whisper-1")
+            .copy(language = "en", provider = ProviderPreferences(zdr = true))
+        val response = TranscriptionClient(transport).transcribe(request, testContext)
+
+        server.verify()
+        assertEquals("buy milk", response.text)
+        assertEquals(2.0, response.usage?.seconds)
+        assertTrue(contentType!!.startsWith("multipart/form-data"), "content type was $contentType")
+        assertTrue(body.contains("name=\"file\"; filename=\"audio.wav\""), body)
+        for ((name, value) in listOf("model" to "whisper-1", "language" to "en", "response_format" to "json")) {
+            assertTrue(Regex("name=\"$name\"[\\s\\S]*?\r\n\r\n$value\r\n").containsMatchIn(body), "missing $name=$value in $body")
+        }
+        assertFalse(body.contains("temperature"))
+        assertFalse(body.contains("input_audio"))
+        assertFalse(body.contains("zdr"))
+    }
+
+    @Test
     fun `OpenRouter-only clients refuse to run`() {
         val (transport, _) = transport(properties())
 
-        assertFailsWith<IllegalStateException> { TranscriptionClient(transport).transcribe(testTranscriptionRequest(), testContext) }
         assertFailsWith<IllegalStateException> { ImageClient(transport).generate(testImageRequest(), testContext) }
         assertFailsWith<IllegalStateException> { ApiKeyClient(transport).currentKey() }
     }

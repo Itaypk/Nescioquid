@@ -7,7 +7,7 @@ import java.util.Base64
 // ── Request ──────────────────────────────────────────────────────────────────
 
 /**
- * A transcription request for OpenRouter's dedicated speech-to-text endpoint
+ * A transcription request for the dedicated speech-to-text endpoint
  * (`POST /audio/transcriptions`).
  *
  * This is the path for giving voice input to a model that has no audio input modality of its own —
@@ -20,9 +20,9 @@ import java.util.Base64
  * [inputAudio] carries raw base64 bytes in the same [InputAudioData] shape chat's `input_audio`
  * content part uses — build a request with [ofBytes] rather than assembling [InputAudioData] by hand.
  *
- * OpenRouter also accepts this endpoint as multipart form-data (for OpenAI-SDK compatibility) and a
- * `response_format: verbose_json` mode for segment/word-level timestamps on OpenAI-compatible
- * providers only; neither is modeled here — this client only ever needs the plain transcript text.
+ * Under [ApiDialect.OPENAI_COMPATIBLE], [TranscriptionClient] sends this as OpenAI's multipart form
+ * instead, and [provider] is dropped. `response_format: verbose_json` (segment/word timestamps) isn't
+ * modeled: this client only ever needs the plain transcript text.
  *
  * @param language ISO-639-1 hint for the source language; omitted lets the model auto-detect.
  * @param temperature 0–1 sampling parameter; lower is more deterministic.
@@ -70,7 +70,8 @@ data class TranscriptionResponse(
 /**
  * Transcription usage/cost accounting — a different breakdown from [Usage]'s prompt/completion
  * tokens: OpenRouter bills transcription primarily by audio [seconds], alongside whatever token
- * counts the provider additionally reports.
+ * counts the provider additionally reports. OpenAI reports either `seconds` or the token counts
+ * (its `type` discriminator is ignored); many self-hosted servers report no usage at all.
  */
 data class TranscriptionUsage(
     val seconds: Double? = null,

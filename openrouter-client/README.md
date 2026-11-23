@@ -129,7 +129,8 @@ self-hosted one (vLLM, Ollama, llama.cpp). The DTOs don't change; what does:
 | Stream usage | `usage.include` | `stream_options.include_usage` |
 | Capabilities | fetched from `/model/{slug}` (unless declared) | `declaredCapabilities` only |
 | ZDR startup check | when `zeroDataRetention` is on | never: retention is the provider's contract |
-| `ImageClient`, `TranscriptionClient`, `ApiKeyClient` | available | throw `IllegalStateException` |
+| `TranscriptionClient` | JSON, base64 `input_audio` | multipart form (`file`, `model`, …); `provider` dropped |
+| `ImageClient`, `ApiKeyClient` | available | throw `IllegalStateException` |
 | Blank `apiKey` | AI calls fail | no `Authorization` header (keyless local servers) |
 
 Messages are sent as given, so leave `ChatMessage.cacheable` out: `cache_control` is an OpenRouter
@@ -344,10 +345,13 @@ Notes:
 - **No id, model, or provider echoed.** Unlike `/chat/completions` and `/images`, the transcription
   endpoint's response carries only `text` and `usage` — `TranscriptionResponse.model`/`.provider` exist
   for interface parity with `AiResponse` but stay `null` in practice.
-- **Multipart form-data and `verbose_json` aren't modeled.** OpenRouter also accepts this endpoint as
-  multipart form-data (for OpenAI-SDK compatibility) and a `response_format: verbose_json` mode for
-  segment/word-level timestamps — available only on OpenAI-compatible upstream providers. Neither is
-  implemented here; this client only ever needs the plain transcript text.
+- **Other OpenAI-compatible servers get multipart form-data.** Under `ApiDialect.OPENAI_COMPATIBLE`
+  the same request goes as OpenAI's form (`file` named `audio.<format>`, `model`, `language`,
+  `temperature`, `response_format=json`), which OpenAI and self-hosted Whisper servers (speaches,
+  whisper.cpp's server, vLLM) take. Declare the model's capabilities there yourself
+  (`outputModalities = listOf("transcription")`), since nothing is fetched.
+- **`verbose_json` isn't modeled.** Segment/word-level timestamps aren't implemented; this client only
+  ever needs the plain transcript text.
 - **Blocking**, and runs against its own `AiClientProperties.transcriptionReadTimeout` (120s by
   default) rather than the chat read timeout, since a long recording can take a while to transcribe.
 

@@ -186,7 +186,7 @@ class AiTransport(
      * only its DTOs and a one-line call here.
      *
      * [body] is what goes on the wire, when it differs from [request] (another dialect's shape of
-     * it); the gate and listener always see [request].
+     * it, or a multipart form), sent as [contentType]; the gate and listener always see [request].
      */
     fun <RESP : AiResponse> call(
         context: AiCallContext,
@@ -194,6 +194,7 @@ class AiTransport(
         path: String,
         responseType: Class<RESP>,
         body: Any = request,
+        contentType: MediaType = MediaType.APPLICATION_JSON,
     ): RESP {
         gateCheck(context, request)
         val response = try {
@@ -204,7 +205,7 @@ class AiTransport(
                 log.debug("Sending request to AI API: path=$path, model=${request.model}")
                 clientFor(path).post()
                     .uri(path)
-                    .contentType(MediaType.APPLICATION_JSON)
+                    .contentType(contentType)
                     .body(body)
                     .retrieve()
                     .body(responseType)!!
