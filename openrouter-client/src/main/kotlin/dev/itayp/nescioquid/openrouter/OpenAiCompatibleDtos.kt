@@ -16,7 +16,7 @@ data class OpenAiCompatibleChatRequest(
     val messages: List<ChatMessage>,
     val tools: List<ToolDefinition>? = null,
     val temperature: Double? = null,
-    @JsonProperty("max_tokens") val maxTokens: Int? = null,
+    @JsonProperty("max_completion_tokens") val maxCompletionTokens: Int? = null,
     @JsonProperty("tool_choice") val toolChoice: String? = null,
     @JsonProperty("reasoning_effort") val reasoningEffort: String? = null,
     @JsonProperty("response_format") val responseFormat: ResponseFormat? = null,
@@ -33,13 +33,16 @@ data class StreamOptions(
  * Maps a request onto [OpenAiCompatibleChatRequest]. Dropped on the way: [ChatRequest.provider],
  * [ChatRequest.plugins], and [ReasoningConfig.maxTokens] / [ReasoningConfig.exclude], which have no
  * OpenAI counterpart. `stream_options` is only sent on a stream, since OpenAI refuses it otherwise.
+ * [ChatRequest.maxTokens] goes out as `max_completion_tokens`: OpenAI deprecated `max_tokens` and
+ * its reasoning models refuse it. Not every server has caught up: Ollama (0.40) ignores the new
+ * name, so the cap doesn't apply there, though the request still succeeds.
  */
 fun ChatRequest.toOpenAiCompatible(): OpenAiCompatibleChatRequest = OpenAiCompatibleChatRequest(
     model = model,
     messages = messages,
     tools = tools,
     temperature = temperature,
-    maxTokens = maxTokens,
+    maxCompletionTokens = maxTokens,
     toolChoice = toolChoice,
     reasoningEffort = reasoning?.effort,
     responseFormat = responseFormat,

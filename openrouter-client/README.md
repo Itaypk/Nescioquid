@@ -126,6 +126,7 @@ self-hosted one (vLLM, Ollama, llama.cpp). The DTOs don't change; what does:
 | --- | --- | --- |
 | `provider` (ZDR, data collection, routing), `plugins` | sent | dropped |
 | `reasoning.effort` | `reasoning` object | `reasoning_effort` (`max_tokens` / `exclude` dropped) |
+| `maxTokens` | `max_tokens` | `max_completion_tokens` (OpenAI's reasoning models refuse `max_tokens`; Ollama ignores the new name) |
 | Stream usage | `usage.include` | `stream_options.include_usage` |
 | Capabilities | fetched from `/model/{slug}` (unless declared) | `declaredCapabilities` only |
 | ZDR startup check | when `zeroDataRetention` is on | never: retention is the provider's contract |

@@ -51,6 +51,7 @@ class OpenAiCompatibleDialectTest {
     private val request = ChatRequest(
         model = "llama3.3",
         messages = listOf(ChatMessage("user", "Hi")),
+        maxTokens = 300,
         reasoning = ReasoningConfig(effort = "low", exclude = true),
         plugins = listOf(PluginConfig.pdfEngine(PdfEngine.NATIVE)),
     )
@@ -71,7 +72,8 @@ class OpenAiCompatibleDialectTest {
         val json = body!!
         assertEquals("llama3.3", json["model"].asString())
         assertEquals("low", json["reasoning_effort"].asString())
-        for (field in listOf("provider", "plugins", "reasoning", "usage", "stream", "stream_options")) {
+        assertEquals(300, json["max_completion_tokens"].asInt())
+        for (field in listOf("provider", "plugins", "reasoning", "usage", "stream", "stream_options", "max_tokens")) {
             assertFalse(json.has(field), "unexpected field $field in $json")
         }
         assertNull(authorization)
